@@ -2,22 +2,17 @@
 FROM node:20-slim AS build
 WORKDIR /app
 
-# 複製根 package.json
-COPY package.json .
-# 建立 apps 目錄結構
-RUN mkdir -p apps/web
-
-# 複製 web 專案
+# 在 Monorepo 中，我們直接進入 web 目錄安裝
 COPY apps/web/package.json ./apps/web/
-# 安裝依賴 (使用 --include=dev 確保包含 vite)
+WORKDIR /app/apps/web
+
+# 安裝依賴
 RUN npm install
 
-# 複製其餘代碼
-COPY apps/web ./apps/web
+# 複製 web 專案其餘代碼
+COPY apps/web ./
 
 # 建構前端
-WORKDIR /app/apps/web
-# 如果有後端 URL 的環境變數，可以在這裡傳入 (或是運行時由 Nginx 配置)
 RUN npm run build
 
 # 階段 2: Serve (使用 Nginx 輕量化)
