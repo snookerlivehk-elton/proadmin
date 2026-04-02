@@ -21,5 +21,5 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/dist ./dist
 COPY --from=base /app/prisma ./prisma
 EXPOSE 3000
-# 使用 package.json 的 start，會在啟動時執行 `prisma db push` 後再啟動服務
-CMD ["npm", "start"]
+# 啟動前同步資料表（開發/測試友好），之後可改為 migrate deploy
+CMD ["sh","-lc","npx prisma db push && node dist/server.js"]

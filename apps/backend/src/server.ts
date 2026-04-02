@@ -4,10 +4,15 @@ import cors from 'cors'
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 import prisma from './db'
+import cookieParser from 'cookie-parser'
+import { OAuth2Client } from 'google-auth-library'
+import bcrypt from 'bcryptjs'
+import { issueToken, clearToken, requireAuth, optionalAuth } from './auth'
 
 const app = express()
 app.use(express.json())
 app.disable('x-powered-by')
+app.use(cookieParser())
 
 const allowOrigin = process.env.APP_BASE_URL || '*'
 const allowList = allowOrigin === '*' ? '*' : allowOrigin.split(',').map(s => s.trim()).filter(Boolean)
@@ -22,6 +27,84 @@ app.use(cors({
 
 app.get('/healthz', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' })
+})
+
+const GoogleSchema = z.object({ credential: z.string().min(10) })
+app.post('/auth/google', async (req: Request, res: Response) => {
+  try {
+    const parsed = GoogleSchema.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_body' })
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    if (!clientId) return res.status(500).json({ error: 'server_misconfigured' })
+    const client = new OAuth2Client(clientId)
+    const ticket = await client.verifyIdToken({ idToken: parsed.data.credential, audience: clientId })
+    const payload: any = ticket.getPayload()
+    if (!payload?.email) return res.status(400).json({ error: 'no_email' })
+    const email = String(payload.email).toLowerCase()
+    const googleId = String(payload.sub)
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { googleId, displayName: payload.name || undefined, avatarUrl: payload.picture || undefined },
+      create: { email, googleId, displayName: payload.name || undefined, avatarUrl: payload.picture || undefined }
+    })
+    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+  } catch (e: any) {
+    res.status(401).json({ error: 'google_verify_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+const RegisterSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  displayName: z.string().optional()
+})
+app.post('/auth/register', async (req: Request, res: Response) => {
+  const parsed = RegisterSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_body', details: parsed.error.flatten() })
+  const email = parsed.data.email.toLowerCase()
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } })
+    if (existing?.passwordHash) return res.status(409).json({ error: 'email_taken' })
+    const passwordHash = bcrypt.hashSync(parsed.data.password, 10)
+    const user = existing
+      ? await prisma.user.update({ where: { id: existing.id }, data: { passwordHash, displayName: parsed.data.displayName ?? existing.displayName } })
+      : await prisma.user.create({ data: { email, passwordHash, displayName: parsed.data.displayName ?? email } })
+    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+  } catch (e: any) {
+    res.status(500).json({ error: 'register_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+const LoginSchema = z.object({ email: z.string().email(), password: z.string().min(6) })
+app.post('/auth/login', async (req: Request, res: Response) => {
+  const parsed = LoginSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_body' })
+  const email = parsed.data.email.toLowerCase()
+  try {
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user?.passwordHash) return res.status(401).json({ error: 'invalid_credentials' })
+    const ok = bcrypt.compareSync(parsed.data.password, user.passwordHash)
+    if (!ok) return res.status(401).json({ error: 'invalid_credentials' })
+    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+  } catch (e: any) {
+    res.status(500).json({ error: 'login_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+app.post('/auth/logout', (_req: Request, res: Response) => {
+  clearToken(res)
+  res.json({ ok: true })
+})
+
+app.get('/auth/me', optionalAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string | undefined
+  if (!userId) return res.json({ user: null })
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user) return res.json({ user: null })
+  res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
 })
 
 app.get('/debug/db', async (_req: Request, res: Response) => {
@@ -45,7 +128,7 @@ const CreateProjectSchema = z.object({
     .optional()
 })
 
-app.post('/projects', async (req: Request, res: Response) => {
+app.post('/projects', requireAuth, async (req: Request, res: Response) => {
   console.log('POST /projects', { body: req.body })
   const parsed = CreateProjectSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -56,7 +139,8 @@ app.post('/projects', async (req: Request, res: Response) => {
     const userId =
       ownerUserId ??
       (await (async () => {
-        if (!owner?.email) return null
+        if (!owner?.email && !(req as any).userId) return null
+        if (!owner?.email && (req as any).userId) return (req as any).userId
         const email = owner.email.toLowerCase()
         const u = await prisma.user.upsert({
           where: { email },
@@ -100,7 +184,7 @@ const CreateChildSchema = z.object({
   ownerUserId: z.string().uuid().optional()
 })
 
-app.post('/projects/:id/children', async (req: Request, res: Response) => {
+app.post('/projects/:id/children', requireAuth, async (req: Request, res: Response) => {
   console.log('POST /projects/:id/children', { params: req.params, body: req.body })
   const parsed = CreateChildSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -225,7 +309,7 @@ const UpdateProjectSchema = z.object({
   status: z.enum(['active', 'archived']).optional()
 }).refine(v => Object.keys(v).length > 0, { message: 'no_fields' })
 
-app.patch('/projects/:id', async (req: Request, res: Response) => {
+app.patch('/projects/:id', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params
   const parsed = UpdateProjectSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -242,7 +326,7 @@ app.patch('/projects/:id', async (req: Request, res: Response) => {
 })
 
 const ArchiveSchema = z.object({ archived: z.boolean() })
-app.post('/projects/:id/archive', async (req: Request, res: Response) => {
+app.post('/projects/:id/archive', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params
   const parsed = ArchiveSchema.safeParse(req.body)
   if (!parsed.success) {

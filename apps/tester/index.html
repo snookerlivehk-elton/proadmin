@@ -23,6 +23,47 @@
   <p>後端健康狀態：<span id="health" class="err">檢查中...</span></p>
 
   <fieldset>
+    <legend>登入 / 註冊</legend>
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="authEmail" placeholder="user@example.com" />
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="authPwd" type="password" placeholder="至少 6 碼" />
+      </div>
+      <div>
+        <label>Display Name（註冊可選）</label>
+        <input id="authName" placeholder="顯示名稱" />
+      </div>
+      <div>
+        <button id="btnRegister">註冊並登入</button>
+      </div>
+      <div>
+        <button id="btnLogin">登入</button>
+      </div>
+      <div>
+        <button id="btnLogout">登出</button>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Google Client ID（可選，初始化後顯示按鈕）</label>
+        <input id="gid" placeholder="xxxxxxxx.apps.googleusercontent.com" style="width:420px" />
+      </div>
+      <div>
+        <button id="initGSI">啟用 Google 登入</button>
+        <div id="gsi" style="margin-top:8px;"></div>
+      </div>
+    </div>
+    <div>
+      <label>當前使用者</label>
+      <pre id="meResp"></pre>
+    </div>
+  </fieldset>
+
+  <fieldset>
     <legend>設定</legend>
     <div>
       <label>API Base URL</label>
@@ -175,6 +216,11 @@
           const j = await r.json()
           $('health').textContent = 'OK: ' + JSON.stringify(j)
           $('health').className = 'ok'
+          // 試著讀取當前使用者
+          try {
+            const me = await fetch(getBase() + '/auth/me', { credentials: 'include' }).then(r => r.json())
+            setJson($('meResp'), me)
+          } catch {}
         } else {
           $('health').textContent = 'HTTP ' + r.status
           $('health').className = 'err'
@@ -186,6 +232,85 @@
     }
 
     $('check').onclick = ping
+
+    $('btnRegister').onclick = async () => {
+      const body = {
+        email: $('authEmail').value.trim(),
+        password: $('authPwd').value,
+        displayName: $('authName').value || undefined
+      }
+      try {
+        const r = await fetch(getBase() + '/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        })
+        const j = await r.json()
+        setJson($('meResp'), j)
+      } catch (e) {
+        setJson($('meResp'), { error: String(e) })
+      }
+    }
+
+    $('btnLogin').onclick = async () => {
+      const body = {
+        email: $('authEmail').value.trim(),
+        password: $('authPwd').value
+      }
+      try {
+        const r = await fetch(getBase() + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        })
+        const j = await r.json()
+        setJson($('meResp'), j)
+      } catch (e) {
+        setJson($('meResp'), { error: String(e) })
+      }
+    }
+
+    $('btnLogout').onclick = async () => {
+      try {
+        const r = await fetch(getBase() + '/auth/logout', { method: 'POST', credentials: 'include' })
+        const j = await r.json()
+        setJson($('meResp'), j)
+      } catch (e) {
+        setJson($('meResp'), { error: String(e) })
+      }
+    }
+
+    $('initGSI').onclick = () => {
+      const cid = $('gid').value.trim()
+      if (!cid) { alert('請輸入 Google Client ID'); return }
+      const s = document.createElement('script')
+      s.src = 'https://accounts.google.com/gsi/client'
+      s.onload = () => {
+        // @ts-ignore
+        google.accounts.id.initialize({
+          client_id: cid,
+          callback: async (resp) => {
+            try {
+              const r = await fetch(getBase() + '/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ credential: resp.credential })
+              })
+              const j = await r.json()
+              setJson($('meResp'), j)
+            } catch (e) {
+              setJson($('meResp'), { error: String(e) })
+            }
+          }
+        })
+        // @ts-ignore
+        google.accounts.id.renderButton($('gsi'), { theme: 'outline', size: 'large' })
+      }
+      document.head.appendChild(s)
+    }
 
     $('createRoot').onclick = async () => {
       const body = {
