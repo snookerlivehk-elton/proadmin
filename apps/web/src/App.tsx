@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,6 +30,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <DashboardPage />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/projects/:id" 
+            element={
+              <PrivateRoute>
+                <ProjectDetailPage />
               </PrivateRoute>
             } 
           />

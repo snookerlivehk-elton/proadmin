@@ -376,6 +376,44 @@ const InviteSchema = z.object({
   role: z.enum(['VIEWER', 'MANAGER']).default('VIEWER')
 })
 
+app.get('/projects/:id/members', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        owner: { select: { id: true, email: true, displayName: true, avatarUrl: true } },
+        memberships: {
+          include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true } } }
+        }
+      }
+    })
+    if (!project) return res.status(404).json({ error: 'not_found' })
+    
+    const members = [
+      { user: project.owner, role: 'OWNER', joinedAt: project.createdAt },
+      ...project.memberships.map(m => ({ user: m.user, role: m.role, joinedAt: m.joinedAt }))
+    ]
+    res.json(members)
+  } catch (e: any) {
+    res.status(500).json({ error: 'members_failed' })
+  }
+})
+
+app.get('/projects/:id/invitations', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  try {
+    const invites = await prisma.projectInvitation.findMany({
+      where: { projectId, status: 'PENDING' },
+      include: { inviter: { select: { displayName: true, email: true } } },
+      orderBy: { createdAt: 'desc' }
+    })
+    res.json(invites)
+  } catch (e: any) {
+    res.status(500).json({ error: 'invitations_failed' })
+  }
+})
+
 app.post('/projects/:id/invitations', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
   const { id: projectId } = req.params
   const userId = (req as any).userId as string

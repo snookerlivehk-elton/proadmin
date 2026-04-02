@@ -135,6 +135,7 @@ export default function DashboardPage() {
               <div 
                 key={project.id}
                 className="bg-white p-7 rounded-3xl border border-gray-100 shadow-lg shadow-gray-50 hover:shadow-2xl hover:shadow-blue-100 hover:border-blue-100 transition-all group cursor-pointer relative overflow-hidden active:scale-[0.98]"
+                onClick={() => navigate(`/projects/${project.id}`)}
               >
                 <div className="flex items-start justify-between mb-6">
                   <div className="bg-blue-50 p-4 rounded-2xl group-hover:bg-blue-600 group-hover:rotate-6 transition-all duration-300">
