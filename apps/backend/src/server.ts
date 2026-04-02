@@ -276,33 +276,53 @@ app.get('/projects/:id/tree', async (req: Request, res: Response) => {
 })
 
 // --- Specific routes BEFORE /projects/:id to avoid being captured by the dynamic route ---
-app.get('/projects/search', async (req: Request, res: Response) => {
+app.get('/projects/search', requireAuth, async (req: Request, res: Response) => {
   const q = (req.query.q as string) || ''
   const limit = Math.min(Number(req.query.limit || 20), 100)
+  const userId = (req as any).userId as string
+
   try {
     const rows = await prisma.project.findMany({
-      where: q ? { name: { contains: q, mode: 'insensitive' } } : {},
+      where: {
+        AND: [
+          q ? { name: { contains: q, mode: 'insensitive' } } : {},
+          {
+            OR: [
+              { ownerUserId: userId },
+              { memberships: { some: { userId } } }
+            ]
+          }
+        ]
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      select: { id: true, name: true, parentId: true, path: true, createdAt: true }
+      select: { id: true, name: true, parentId: true, path: true, createdAt: true, status: true, description: true }
     })
     res.json(rows)
   } catch (e: any) {
-    res.status(500).json({ error: 'search_failed', message: e?.message ?? 'unknown' })
+    res.status(500).json({ error: 'search_failed' })
   }
 })
 
-app.get('/projects/recent', async (req: Request, res: Response) => {
+app.get('/projects/recent', requireAuth, async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit || 20), 100)
+  const userId = (req as any).userId as string
+
   try {
     const rows = await prisma.project.findMany({
+      where: {
+        OR: [
+          { ownerUserId: userId },
+          { memberships: { some: { userId } } }
+        ]
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      select: { id: true, name: true, parentId: true, path: true, createdAt: true }
+      select: { id: true, name: true, parentId: true, path: true, createdAt: true, status: true, description: true }
     })
     res.json(rows)
   } catch (e: any) {
-    res.status(500).json({ error: 'recent_failed', message: e?.message ?? 'unknown' })
+    res.status(500).json({ error: 'recent_failed' })
   }
 })
 

@@ -5,12 +5,14 @@ import { Layout, LogOut, FolderPlus, Search, ChevronRight, Folder, Loader2 } fro
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Project } from '../lib/api';
 import CreateProjectModal from '../components/CreateProjectModal';
+import AcceptInviteModal from '../components/AcceptInviteModal';
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // 取得最近專案
@@ -78,13 +80,22 @@ export default function DashboardPage() {
             <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">我的專案</h2>
             <p className="text-gray-500 mt-2 font-medium text-lg">管理與協作您的階層式專案</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-blue-200 active:scale-95 font-bold"
-          >
-            <FolderPlus className="h-5 w-5" />
-            建立新專案
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsAcceptModalOpen(true)}
+              className="border border-blue-600 text-blue-600 px-6 py-3 rounded-2xl flex items-center justify-center gap-2.5 transition-all hover:bg-blue-50 active:scale-95 font-bold"
+            >
+              <Mail className="h-5 w-5" />
+              接受邀請
+            </button>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-blue-200 active:scale-95 font-bold"
+            >
+              <FolderPlus className="h-5 w-5" />
+              建立新專案
+            </button>
+          </div>
         </div>
 
         {/* 搜尋與篩選 */}
@@ -169,6 +180,12 @@ export default function DashboardPage() {
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
         onSuccess={handleCreateSuccess}
+      />
+
+      <AcceptInviteModal
+        isOpen={isAcceptModalOpen}
+        onClose={() => setIsAcceptModalOpen(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['projects'] })}
       />
     </div>
   );
