@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Projects API 測試</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; }
+    fieldset { margin-bottom: 20px; }
+    input, button { padding: 6px 10px; margin: 4px 0; }
+    pre { background: #f7f7f7; padding: 12px; border-radius: 6px; overflow:auto; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end }
+    label { display:block; font-size:12px; color:#555 }
+    .ok { color: #0a7d10 }
+    .err { color: #b00020 }
+  </style>
+  <script>
+    window.DEFAULT_BASE = "https://hpbackend-production-4b7e.up.railway.app"
+  </script>
+</head>
+<body>
+  <h1>Projects API 測試</h1>
+  <p>後端健康狀態：<span id="health" class="err">檢查中...</span></p>
+
+  <fieldset>
+    <legend>設定</legend>
+    <div>
+      <label>API Base URL</label>
+      <input id="base" style="width:520px" />
+      <button id="check">檢查 /healthz</button>
+    </div>
+    <p style="font-size:12px;color:#666">提示：若瀏覽器顯示 CORS 錯誤，請將後端 APP_BASE_URL 設為 * 後重新部署。</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>建立頂層專案</legend>
+    <div class="row">
+      <div>
+        <label>專案名稱</label>
+        <input id="rootName" placeholder="Company A" />
+      </div>
+      <div>
+        <label>Owner Email</label>
+        <input id="ownerEmail" placeholder="owner@example.com" />
+      </div>
+      <div>
+        <button id="createRoot">建立</button>
+      </div>
+    </div>
+    <div>
+      <label>回應</label>
+      <pre id="rootResp"></pre>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>建立子專案</legend>
+    <div class="row">
+      <div>
+        <label>父專案 ID</label>
+        <input id="parentId" placeholder="從上一步結果複製 id" />
+      </div>
+      <div>
+        <label>子專案名稱</label>
+        <input id="childName" placeholder="Department 1" />
+      </div>
+      <div>
+        <button id="createChild">建立子專案</button>
+      </div>
+    </div>
+    <div>
+      <label>回應</label>
+      <pre id="childResp"></pre>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>查樹狀</legend>
+    <div class="row">
+      <div>
+        <label>根專案 ID</label>
+        <input id="treeId" placeholder="從上一步結果複製 id" />
+      </div>
+      <div>
+        <button id="getTree">取得樹狀</button>
+      </div>
+    </div>
+    <div>
+      <label>樹狀結果</label>
+      <pre id="treeResp"></pre>
+    </div>
+  </fieldset>
+
+  <script>
+    const $ = (id) => document.getElementById(id)
+    const setJson = (el, obj) => el.textContent = JSON.stringify(obj, null, 2)
+    const getBase = () => $('base').value.replace(/\/+$/, '')
+
+    function init() {
+      const urlBase = new URLSearchParams(location.search).get('base')
+      $('base').value = urlBase || window.DEFAULT_BASE || ''
+      ping()
+    }
+
+    async function ping() {
+      $('health').textContent = '檢查中...'
+      $('health').className = ''
+      try {
+        const r = await fetch(getBase() + '/healthz')
+        if (r.ok) {
+          const j = await r.json()
+          $('health').textContent = 'OK: ' + JSON.stringify(j)
+          $('health').className = 'ok'
+        } else {
+          $('health').textContent = 'HTTP ' + r.status
+          $('health').className = 'err'
+        }
+      } catch (e) {
+        $('health').textContent = '錯誤：' + (e?.message || e)
+        $('health').className = 'err'
+      }
+    }
+
+    $('check').onclick = ping
+
+    $('createRoot').onclick = async () => {
+      const body = {
+        name: $('rootName').value || 'Company A',
+        owner: { email: $('ownerEmail').value || 'owner@example.com' }
+      }
+      try {
+        const r = await fetch(getBase() + '/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        const j = await r.json()
+        setJson($('rootResp'), j)
+        if (r.ok && j?.id) {
+          $('parentId').value = j.id
+          $('treeId').value = j.id
+        }
+      } catch (e) {
+        setJson($('rootResp'), { error: String(e) })
+      }
+    }
+
+    $('createChild').onclick = async () => {
+      const parentId = $('parentId').value.trim()
+      const body = { name: $('childName').value || 'Department 1' }
+      if (!parentId) {
+        setJson($('childResp'), { error: '請填父專案 ID' })
+        return
+      }
+      try {
+        const r = await fetch(getBase() + `/projects/${parentId}/children`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        const j = await r.json()
+        setJson($('childResp'), j)
+      } catch (e) {
+        setJson($('childResp'), { error: String(e) })
+      }
+    }
+
+    $('getTree').onclick = async () => {
+      const id = $('treeId').value.trim()
+      if (!id) {
+        setJson($('treeResp'), { error: '請填根專案 ID' })
+        return
+      }
+      try {
+        const r = await fetch(getBase() + `/projects/${id}/tree`)
+        const j = await r.json()
+        setJson($('treeResp'), j)
+      } catch (e) {
+        setJson($('treeResp'), { error: String(e) })
+      }
+    }
+
+    init()
+  </script>
+</body>
+</html>
