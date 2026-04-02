@@ -9,6 +9,16 @@ import { OAuth2Client } from 'google-auth-library'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { issueToken, clearToken, requireAuth, optionalAuth, checkProjectAccess } from './auth'
+import { execSync } from 'child_process'
+
+// 在伺服器啟動前強制同步資料庫結構
+try {
+  console.log('Synchronizing database schema...')
+  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' })
+  console.log('Database synchronization complete.')
+} catch (e: any) {
+  console.error('Database synchronization failed:', e.message)
+}
 
 const app = express()
 app.use(express.json())
