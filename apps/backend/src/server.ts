@@ -133,7 +133,10 @@ app.get('/auth/invitations', requireAuth, async (req: Request, res: Response) =>
     if (!user) return res.status(404).json({ error: 'user_not_found' })
 
     const invites = await prisma.projectInvitation.findMany({
-      where: { inviteeEmail: user.email.toLowerCase(), status: 'PENDING' },
+      where: { 
+        inviteeEmail: user.email.toLowerCase(), 
+        status: { in: ['PENDING', 'REJECTED', 'CANCELLED'] } 
+      },
       include: { 
         project: { select: { id: true, name: true, description: true } },
         inviter: { select: { displayName: true, email: true } }
@@ -425,6 +428,16 @@ const InviteSchema = z.object({
   role: z.enum(['VIEWER', 'MANAGER']).default('VIEWER')
 })
 
+const CreateLogSchema = z.object({
+  type: z.enum(['ENGINEERING', 'EXPENSE', 'INCOME', 'REPORT', 'COMPLETION']),
+  title: z.string().min(1),
+  content: z.string(),
+  amount: z.number().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  attachments: z.array(z.object({ name: z.string(), url: z.string() })).optional().nullable()
+})
+
 app.get('/projects/:id/members', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
   const { id: projectId } = req.params
   try {
@@ -453,7 +466,10 @@ app.get('/projects/:id/invitations', requireAuth, checkProjectAccess('MANAGER'),
   const { id: projectId } = req.params
   try {
     const invites = await prisma.projectInvitation.findMany({
-      where: { projectId, status: 'PENDING' },
+      where: { 
+        projectId, 
+        status: { in: ['PENDING', 'REJECTED', 'CANCELLED'] } 
+      },
       include: { inviter: { select: { displayName: true, email: true } } },
       orderBy: { createdAt: 'desc' }
     })
@@ -587,6 +603,100 @@ app.post('/invitations/:id/cancel', requireAuth, async (req: Request, res: Respo
     res.json({ ok: true })
   } catch (e: any) {
     res.status(500).json({ error: 'cancel_failed' })
+  }
+})
+
+// 刪除/隱藏邀請紀錄 (實務上通常是軟刪除)
+app.delete('/invitations/:id', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params
+  const userId = (req as any).userId as string
+
+  try {
+    const invite = await prisma.projectInvitation.findUnique({ where: { id } })
+    if (!invite) return res.status(404).json({ error: 'not_found' })
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    const project = await prisma.project.findUnique({ where: { id: invite.projectId } })
+
+    // 只有受邀者本人 (如果是 rejected/accepted)、邀請者、或專案擁有者可以刪除
+    const isInvitee = user?.email.toLowerCase() === invite.inviteeEmail.toLowerCase()
+    const isInviter = invite.inviterUserId === userId
+    const isOwner = project?.ownerUserId === userId
+
+    if (!isInvitee && !isInviter && !isOwner) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+
+    // 這裡我們直接從資料庫移除，或是您可以改成 update status: 'DELETED'
+    await prisma.projectInvitation.delete({ where: { id } })
+    res.json({ ok: true })
+  } catch (e: any) {
+    res.status(500).json({ error: 'delete_failed' })
+  }
+})
+
+app.get('/projects/:id/logs', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  try {
+    const logs = await prisma.projectLog.findMany({
+      where: { projectId },
+      include: { author: { select: { displayName: true, email: true, avatarUrl: true } } },
+      orderBy: { createdAt: 'desc' }
+    })
+    res.json(logs)
+  } catch (e: any) {
+    res.status(500).json({ error: 'get_logs_failed' })
+  }
+})
+
+app.post('/projects/:id/logs', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  const userId = (req as any).userId as string
+  const parsed = CreateLogSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_body', details: parsed.error.flatten() })
+
+  try {
+    const log = await prisma.projectLog.create({
+      data: {
+        projectId,
+        userId,
+        type: parsed.data.type as any,
+        title: parsed.data.title,
+        content: parsed.data.content,
+        amount: parsed.data.amount,
+        startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
+        endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : null,
+        attachments: parsed.data.attachments as any
+      }
+    })
+    res.json(log)
+  } catch (e: any) {
+    res.status(500).json({ error: 'create_log_failed', message: e.message })
+  }
+})
+
+app.delete('/logs/:id', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params
+  const userId = (req as any).userId as string
+
+  try {
+    const log = await prisma.projectLog.findUnique({ where: { id } })
+    if (!log) return res.status(404).json({ error: 'not_found' })
+
+    // 只有作者本人或是專案 Manager 可以刪除
+    const membership = await prisma.projectMembership.findUnique({
+      where: { projectId_userId: { projectId: log.projectId, userId } }
+    })
+    const project = await prisma.project.findUnique({ where: { id: log.projectId } })
+
+    if (log.userId !== userId && membership?.role !== 'MANAGER' && project?.ownerUserId !== userId) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+
+    await prisma.projectLog.delete({ where: { id } })
+    res.json({ ok: true })
+  } catch (e: any) {
+    res.status(500).json({ error: 'delete_log_failed' })
   }
 })
 

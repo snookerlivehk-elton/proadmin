@@ -42,6 +42,15 @@ model User {
   ownedProjects Project[] @relation("OwnedProjects")
   auditLogs   AuditLog[] @relation("AuditActor")
   invitationsSent ProjectInvitation[] @relation("Inviter")
+  projectLogs ProjectLog[] @relation("LogAuthor")
+}
+
+enum ProjectLogType {
+  ENGINEERING
+  EXPENSE
+  INCOME
+  REPORT
+  COMPLETION
 }
 
 model Project {
@@ -60,9 +69,30 @@ model Project {
   memberships  ProjectMembership[]
   invitations  ProjectInvitation[]
   auditLogs    AuditLog[]
+  projectLogs  ProjectLog[]
 
   @@index([parentId])
   @@index([path])
+}
+
+model ProjectLog {
+  id          String         @id @default(uuid())
+  projectId   String
+  userId      String
+  type        ProjectLogType
+  title       String
+  content     String
+  amount      Decimal?       @db.Decimal(12, 2)
+  startDate   DateTime?
+  endDate     DateTime?
+  attachments Json?          // [{name: string, url: string}]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  project     Project @relation(fields: [projectId], references: [id])
+  author      User    @relation("LogAuthor", fields: [userId], references: [id])
+
+  @@index([projectId, createdAt])
 }
 
 model ProjectMembership {

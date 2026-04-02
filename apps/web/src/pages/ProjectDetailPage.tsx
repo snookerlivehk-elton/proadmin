@@ -12,11 +12,29 @@ import {
   ArrowLeft,
   Mail,
   Loader2,
-  Plus
+  Plus,
+  ClipboardList,
+  HardHat,
+  Receipt,
+  TrendingUp,
+  FileText,
+  CheckCircle,
+  Trash2,
+  Paperclip,
+  Calendar
 } from 'lucide-react';
-import { api, type Project, type User } from '../lib/api';
+import { api, type Project, type User, type ProjectLog } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import CreateProjectModal from '../components/CreateProjectModal';
+import CreateProjectLogModal from '../components/CreateProjectLogModal';
+
+const LOG_TYPE_MAP: Record<string, { label: string; icon: any; colorClass: string; bgClass: string }> = {
+  ENGINEERING: { label: '工程', icon: HardHat, colorClass: 'text-blue-600', bgClass: 'bg-blue-50' },
+  EXPENSE: { label: '支出', icon: Receipt, colorClass: 'text-red-600', bgClass: 'bg-red-50' },
+  INCOME: { label: '收入', icon: TrendingUp, colorClass: 'text-green-600', bgClass: 'bg-green-50' },
+  REPORT: { label: '報告', icon: FileText, colorClass: 'text-orange-600', bgClass: 'bg-orange-50' },
+  COMPLETION: { label: '完工', icon: CheckCircle, colorClass: 'text-purple-600', bgClass: 'bg-purple-50' },
+};
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,7 +42,8 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'subprojects' | 'members' | 'settings'>('subprojects');
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'subprojects' | 'members' | 'logs' | 'settings'>('subprojects');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'VIEWER' | 'MANAGER'>('VIEWER');
   const [isInviting, setIsInviting] = useState(false);
@@ -47,7 +66,8 @@ export default function ProjectDetailPage() {
       const { data } = await api.get(`/projects/${id}/members`);
       return data;
     },
-    enabled: !!id && activeTab === 'members'
+    enabled: !!id && activeTab === 'members',
+    refetchInterval: 5000, // 每 5 秒自動重新整理成員列表
   });
 
   // 取得待處理邀請
@@ -57,7 +77,18 @@ export default function ProjectDetailPage() {
       const { data } = await api.get(`/projects/${id}/invitations`);
       return data;
     },
-    enabled: !!id && activeTab === 'members'
+    enabled: !!id && activeTab === 'members',
+    refetchInterval: 5000, // 每 5 秒自動重新整理邀請狀態
+  });
+
+  // 取得專案日誌
+  const { data: logs, isLoading: isLoadingLogs } = useQuery<ProjectLog[]>({
+    queryKey: ['projects', id, 'logs'],
+    queryFn: async () => {
+      const { data } = await api.get(`/projects/${id}/logs`);
+      return data;
+    },
+    enabled: !!id && activeTab === 'logs'
   });
 
   const handleCancelInvite = async (inviteId: string) => {
@@ -66,6 +97,25 @@ export default function ProjectDetailPage() {
       refetchInvitations();
     } catch (err: any) {
       alert(err.response?.data?.message || '撤回邀請失敗');
+    }
+  };
+
+  const handleDeleteInvite = async (inviteId: string) => {
+    try {
+      await api.delete(`/invitations/${inviteId}`);
+      refetchInvitations();
+    } catch (err: any) {
+      alert(err.response?.data?.message || '刪除邀請紀錄失敗');
+    }
+  };
+
+  const handleDeleteLog = async (logId: string) => {
+    if (!confirm('確定要刪除這條日誌嗎？')) return;
+    try {
+      await api.delete(`/logs/${logId}`);
+      queryClient.invalidateQueries({ queryKey: ['projects', id, 'logs'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || '刪除日誌失敗');
     }
   };
 
@@ -226,6 +276,17 @@ export default function ProjectDetailPage() {
             </div>
           </button>
           <button 
+            onClick={() => setActiveTab('logs')}
+            className={`py-4 px-2 font-bold text-sm transition-all border-b-2 relative ${
+              activeTab === 'logs' ? 'text-blue-600 border-blue-600' : 'text-gray-400 border-transparent hover:text-gray-600'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" />
+              項目日誌
+            </div>
+          </button>
+          <button 
             onClick={() => setActiveTab('settings')}
             className={`py-4 px-2 font-bold text-sm transition-all border-b-2 relative ${
               activeTab === 'settings' ? 'text-blue-600 border-blue-600' : 'text-gray-400 border-transparent hover:text-gray-600'
@@ -369,25 +430,167 @@ export default function ProjectDetailPage() {
                       <div key={inv.id} className="p-4 group/inv">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-bold text-gray-900">{inv.inviteeEmail}</span>
-                          <span className="text-[10px] bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded font-black uppercase">PENDING</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${
+                            inv.status === 'PENDING' ? 'bg-yellow-50 text-yellow-600' :
+                            inv.status === 'REJECTED' ? 'bg-red-50 text-red-600' :
+                            'bg-gray-50 text-gray-400'
+                          }`}>{inv.status}</span>
                         </div>
                         <div className="text-[10px] text-gray-400 flex items-center justify-between">
                           <span>角色: {inv.role}</span>
-                          <button 
-                            onClick={() => handleCancelInvite(inv.id)}
-                            className="opacity-0 group-hover/inv:opacity-100 text-red-500 font-bold hover:underline transition-all"
-                          >
-                            撤回
-                          </button>
+                          <div className="flex gap-2">
+                            {inv.status === 'PENDING' ? (
+                              <button 
+                                onClick={() => handleCancelInvite(inv.id)}
+                                className="opacity-0 group-hover/inv:opacity-100 text-red-500 font-bold hover:underline transition-all"
+                              >
+                                撤回
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={() => handleDeleteInvite(inv.id)}
+                                className="opacity-0 group-hover/inv:opacity-100 text-gray-400 font-bold hover:underline transition-all"
+                              >
+                                刪除
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        {/* 這裡可以加一個複製 Token 的功能，方便開發測試 */}
-                        <div className="mt-2 text-[8px] text-gray-300 break-all select-all">ID: {inv.id}</div>
+                        {inv.status === 'PENDING' && (
+                          <div className="mt-2 text-[8px] text-gray-300 break-all select-all">ID: {inv.id}</div>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'logs' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                <ClipboardList className="h-6 w-6 text-blue-600" />
+                項目日誌紀錄
+              </h3>
+              <button
+                onClick={() => setIsLogModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-blue-100 font-bold active:scale-95"
+              >
+                <Plus className="h-4 w-4" />
+                新增日誌
+              </button>
+            </div>
+
+            {isLoadingLogs ? (
+              <div className="flex justify-center py-20">
+                <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+              </div>
+            ) : !logs || logs.length === 0 ? (
+              <div className="bg-white rounded-3xl p-20 shadow-sm border border-gray-100 text-center">
+                <div className="bg-gray-50 h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <ClipboardList className="h-10 w-10 text-gray-300" />
+                </div>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">尚無日誌紀錄</h4>
+                <p className="text-gray-400 max-w-xs mx-auto mb-8">開始為您的專案紀錄進度、支出或回報工作報告吧！</p>
+                <button
+                  onClick={() => setIsLogModalOpen(true)}
+                  className="text-blue-600 font-bold hover:underline"
+                >
+                  立即建立第一條日誌
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {logs.map((log) => {
+                  const typeInfo = LOG_TYPE_MAP[log.type] || LOG_TYPE_MAP.REPORT;
+                  const Icon = typeInfo.icon;
+                  return (
+                    <div key={log.id} className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:border-blue-200 transition-all group">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className={`p-2 rounded-lg ${typeInfo.bgClass} ${typeInfo.colorClass}`}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${typeInfo.bgClass} ${typeInfo.colorClass}`}>
+                              {typeInfo.label}
+                            </span>
+                            <span className="text-xs text-gray-400 font-medium">
+                              {new Date(log.createdAt).toLocaleString('zh-TW', { dateStyle: 'medium', timeStyle: 'short' })}
+                            </span>
+                          </div>
+                          
+                          <h4 className="text-lg font-black text-gray-900 mb-2">{log.title}</h4>
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed mb-4">{log.content}</p>
+                          
+                          <div className="flex flex-wrap items-center gap-6 text-xs border-t border-gray-50 pt-4">
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-bold text-[10px]">
+                                {log.author?.displayName?.[0] || 'U'}
+                              </div>
+                              <span className="font-bold text-gray-700">{log.author?.displayName || log.author?.email}</span>
+                            </div>
+                            
+                            {log.amount !== null && (
+                              <div className="flex items-center gap-1 font-black text-gray-900">
+                                <span className="text-gray-400">金額:</span>
+                                <span className={log.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}>
+                                  HK$ {Number(log.amount).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+
+                            {log.startDate && (
+                              <div className="flex items-center gap-1 text-gray-500 font-bold">
+                                <Calendar className="h-3 w-3" />
+                                <span>{new Date(log.startDate).toLocaleDateString()}</span>
+                                {log.endDate && (
+                                  <>
+                                    <span>~</span>
+                                    <span>{new Date(log.endDate).toLocaleDateString()}</span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            
+                            {log.attachments && (log.attachments as any[]).length > 0 && (
+                              <div className="flex items-center gap-2">
+                                <Paperclip className="h-3 w-3 text-gray-400" />
+                                <div className="flex gap-2">
+                                  {(log.attachments as any[]).map((file, idx) => (
+                                    <a 
+                                      key={idx} 
+                                      href={file.url} 
+                                      target="_blank" 
+                                      rel="noreferrer"
+                                      className="text-blue-500 hover:underline font-bold"
+                                    >
+                                      {file.name}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {(log.userId === user?.id || project.ownerUserId === user?.id) && (
+                          <button
+                            onClick={() => handleDeleteLog(log.id)}
+                            className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -411,6 +614,13 @@ export default function ProjectDetailPage() {
         onClose={() => setIsModalOpen(false)} 
         onSuccess={handleCreateSuccess}
         parentId={id}
+      />
+
+      <CreateProjectLogModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['projects', id, 'logs'] })}
+        projectId={id!}
       />
     </div>
   );

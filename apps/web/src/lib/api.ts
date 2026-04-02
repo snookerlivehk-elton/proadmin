@@ -30,3 +30,25 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
 }
+
+export type ProjectLogType = 'ENGINEERING' | 'EXPENSE' | 'INCOME' | 'REPORT' | 'COMPLETION';
+
+export interface ProjectLog {
+  id: string;
+  projectId: string;
+  userId: string;
+  type: ProjectLogType;
+  title: string;
+  content: string;
+  amount: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  attachments: { name: string; url: string }[] | null;
+  createdAt: string;
+  updatedAt: string;
+  author?: {
+    displayName: string | null;
+    email: string;
+    avatarUrl?: string;
+  };
+}

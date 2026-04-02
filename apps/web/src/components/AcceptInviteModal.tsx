@@ -24,7 +24,8 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
       const { data } = await api.get('/auth/invitations');
       return data;
     },
-    enabled: isOpen
+    enabled: isOpen,
+    refetchInterval: 5000, // 每 5 秒自動重新整理一次，達成「準即時」更新
   });
 
   if (!isOpen) return null;
@@ -39,6 +40,7 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
       
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -53,10 +55,22 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
     setError(null);
     try {
       await api.post(`/invitations/${inviteId}/reject`);
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] });
     } catch (err: any) {
       setError(err.response?.data?.message || '拒絕邀請失敗');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleDelete = async (inviteId: string) => {
+    setLoading(inviteId);
+    setError(null);
+    try {
+      await api.delete(`/invitations/${inviteId}`);
+      queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] });
+    } catch (err: any) {
+      setError(err.response?.data?.message || '刪除紀錄失敗');
     } finally {
       setLoading(null);
     }
@@ -81,6 +95,12 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 space-y-6">
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+              {error}
+            </div>
+          )}
+          
           {isLoadingInvites ? (
             <div className="py-20 flex flex-col items-center gap-4">
               <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
@@ -95,6 +115,13 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-lg font-black text-gray-900 group-hover:text-blue-600 transition-colors">{inv.project.name}</span>
                         <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-[10px] font-black rounded uppercase">{inv.role}</span>
+                        {inv.status !== 'PENDING' && (
+                          <span className={`px-2 py-0.5 text-[10px] font-black rounded uppercase ${
+                            inv.status === 'REJECTED' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {inv.status}
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-500 font-medium line-clamp-1">{inv.project.description || '暫無描述'}</p>
                       <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">
@@ -105,21 +132,33 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
                     </div>
                     
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => handleReject(inv.id)}
-                        disabled={!!loading}
-                        className="px-4 py-2 border border-red-200 text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-all disabled:opacity-50"
-                      >
-                        拒絕
-                      </button>
-                      <button
-                        onClick={() => handleAccept(inv.id)}
-                        disabled={!!loading}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-blue-100 active:scale-95 disabled:opacity-50 flex items-center gap-2"
-                      >
-                        {loading === inv.id && <Loader2 className="h-4 w-4 animate-spin" />}
-                        同意加入
-                      </button>
+                      {inv.status === 'PENDING' ? (
+                        <>
+                          <button
+                            onClick={() => handleReject(inv.id)}
+                            disabled={!!loading}
+                            className="px-4 py-2 border border-red-200 text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-all disabled:opacity-50"
+                          >
+                            拒絕
+                          </button>
+                          <button
+                            onClick={() => handleAccept(inv.id)}
+                            disabled={!!loading}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-blue-100 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {loading === inv.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                            同意加入
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleDelete(inv.id)}
+                          disabled={!!loading}
+                          className="px-4 py-2 border border-gray-200 text-gray-400 rounded-xl font-bold text-sm hover:bg-gray-100 transition-all disabled:opacity-50"
+                        >
+                          刪除紀錄
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -172,13 +211,14 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
                 </div>
                 {error && <p className="text-xs font-bold text-red-500 ml-1">{error}</p>}
                 <button
-                  onClick={() => handleAccept(manualInviteId)}
-                  disabled={!manualInviteId || !manualToken || !!loading}
+                  onClick={() => handleAccept(manualInviteId, manualToken)}
+                  disabled={!manualInviteId || !!loading}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black shadow-lg shadow-blue-200 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   驗證並加入專案
                 </button>
+                <p className="text-[10px] text-gray-400 text-center">提示：如果您登入的 Email 與受邀 Email 相同，可不輸入 Token 直接加入。</p>
               </div>
             )}
           </div>
