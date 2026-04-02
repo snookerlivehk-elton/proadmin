@@ -65,7 +65,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, parentI
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all placeholder:text-gray-400"
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 text-gray-900 font-bold"
               placeholder="例如：snooker 賽事管理"
             />
           </div>
@@ -76,7 +76,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, parentI
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none"
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none text-gray-900 font-medium"
               placeholder="簡短描述專案目標..."
             />
           </div>

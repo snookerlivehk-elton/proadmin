@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev'
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: true,
-  sameSite: 'lax' as const,
+  sameSite: 'none' as const,
   path: '/'
 }
 
