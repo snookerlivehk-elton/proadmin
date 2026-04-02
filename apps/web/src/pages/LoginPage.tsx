@@ -40,23 +40,39 @@ export default function LoginPage() {
       try {
         await googleLogin(response.credential);
       } catch (err: any) {
-        setError('Google login failed');
+        console.error('Google Login Error:', err.response?.data || err);
+        setError(err.response?.data?.message || 'Google login failed');
       }
     };
 
-    // @ts-ignore
-    if (window.google) {
+    const initGoogle = () => {
       // @ts-ignore
-      google.accounts.id.initialize({
-        client_id: '277887232996-5lfubeh4be5pnrd458buc489uq0h0e1g.apps.googleusercontent.com',
-        callback: handleGoogleResponse,
-      });
-      // @ts-ignore
-      google.accounts.id.renderButton(document.getElementById('googleBtn'), {
-        theme: 'outline',
-        size: 'large',
-        width: '100%',
-      });
+      if (window.google && document.getElementById('googleBtn')) {
+        // @ts-ignore
+        google.accounts.id.initialize({
+          client_id: '277887232996-5lfubeh4be5pnrd458buc489uq0h0e1g.apps.googleusercontent.com',
+          callback: handleGoogleResponse,
+        });
+        // @ts-ignore
+        google.accounts.id.renderButton(document.getElementById('googleBtn'), {
+          theme: 'outline',
+          size: 'large',
+          width: 320, // 改用數值避開警告
+        });
+      }
+    };
+
+    // 確保腳本載入後才初始化
+    if (!window.hasOwnProperty('google')) {
+      const interval = setInterval(() => {
+        if (window.hasOwnProperty('google')) {
+          initGoogle();
+          clearInterval(interval);
+        }
+      }, 100);
+      return () => clearInterval(interval);
+    } else {
+      initGoogle();
     }
   }, [googleLogin]);
 

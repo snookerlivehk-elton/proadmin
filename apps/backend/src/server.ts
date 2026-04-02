@@ -36,7 +36,10 @@ app.post('/auth/google', async (req: Request, res: Response) => {
     const parsed = GoogleSchema.safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: 'invalid_body' })
     const clientId = process.env.GOOGLE_CLIENT_ID
-    if (!clientId) return res.status(500).json({ error: 'server_misconfigured' })
+    if (!clientId) {
+      console.error('GOOGLE_CLIENT_ID is not set in environment variables!')
+      return res.status(500).json({ error: 'server_misconfigured', message: 'Missing GOOGLE_CLIENT_ID' })
+    }
     const client = new OAuth2Client(clientId)
     const ticket = await client.verifyIdToken({ idToken: parsed.data.credential, audience: clientId })
     const payload: any = ticket.getPayload()
@@ -51,6 +54,7 @@ app.post('/auth/google', async (req: Request, res: Response) => {
     issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
     res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
   } catch (e: any) {
+    console.error('Google Auth Error:', e.message)
     res.status(401).json({ error: 'google_verify_failed', message: e?.message ?? 'unknown' })
   }
 })
