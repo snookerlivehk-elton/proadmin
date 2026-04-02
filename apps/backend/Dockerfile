@@ -1,5 +1,9 @@
-FROM node:18-alpine AS base
+FROM node:18-bullseye-slim AS base
 WORKDIR /app
+# 安裝 OpenSSL 與憑證（Prisma 引擎相依）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 # 先複製 package 定義與 prisma schema，確保安裝時 postinstall/prisma 能找到 schema
 COPY package.json ./package.json
 COPY prisma ./prisma
@@ -10,7 +14,7 @@ COPY tsconfig.json ./tsconfig.json
 COPY src ./src
 RUN npm run build
 
-FROM node:18-alpine
+FROM node:18-bullseye-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=base /app/node_modules ./node_modules
