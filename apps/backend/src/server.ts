@@ -214,6 +214,49 @@ app.post('/projects/:id/archive', async (req: Request, res: Response) => {
   }
 })
 
+app.get('/projects/search', async (req: Request, res: Response) => {
+  const q = (req.query.q as string) || ''
+  const limit = Math.min(Number(req.query.limit || 20), 100)
+  try {
+    const rows = await prisma.project.findMany({
+      where: q ? { name: { contains: q, mode: 'insensitive' } } : {},
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, name: true, parentId: true, path: true, createdAt: true }
+    })
+    res.json(rows)
+  } catch (e: any) {
+    res.status(500).json({ error: 'search_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+app.get('/projects/recent', async (req: Request, res: Response) => {
+  const limit = Math.min(Number(req.query.limit || 20), 100)
+  try {
+    const rows = await prisma.project.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, name: true, parentId: true, path: true, createdAt: true }
+    })
+    res.json(rows)
+  } catch (e: any) {
+    res.status(500).json({ error: 'recent_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+app.get('/projects/:id/parent', async (req: Request, res: Response) => {
+  const { id } = req.params
+  try {
+    const proj = await prisma.project.findUnique({ where: { id } })
+    if (!proj) return res.status(404).json({ error: 'not_found' })
+    if (!proj.parentId) return res.json({ parent: null })
+    const parent = await prisma.project.findUnique({ where: { id: proj.parentId } })
+    res.json({ parent })
+  } catch (e: any) {
+    res.status(500).json({ error: 'parent_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
 app.get('/', (_req: Request, res: Response) => {
   res.status(200).send('hp-collab backend online. Check /healthz')
 })

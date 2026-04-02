@@ -92,6 +92,28 @@
   </fieldset>
 
   <fieldset>
+    <legend>搜尋專案（用名稱找回 ID）</legend>
+    <div class="row">
+      <div>
+        <label>名稱包含</label>
+        <input id="searchName" placeholder="輸入關鍵字" />
+      </div>
+      <div>
+        <label>筆數</label>
+        <input id="searchLimit" type="number" value="20" style="width:80px" />
+      </div>
+      <div>
+        <button id="searchProjects">搜尋</button>
+      </div>
+    </div>
+    <div>
+      <label>搜尋結果（點「使用」可帶入 ID）</label>
+      <div id="searchList"></div>
+      <pre id="searchResp"></pre>
+    </div>
+  </fieldset>
+
+  <fieldset>
     <legend>讀取 / 更新 / 封存</legend>
     <div class="row">
       <div>
@@ -222,6 +244,44 @@
       }
     }
 
+    function renderSearchList(rows) {
+      const box = document.getElementById('searchList')
+      box.innerHTML = ''
+      if (!Array.isArray(rows) || !rows.length) return
+      const ul = document.createElement('ul')
+      rows.forEach(r => {
+        const li = document.createElement('li')
+        const btn = document.createElement('button')
+        btn.textContent = '使用'
+        btn.onclick = () => {
+          $('projId').value = r.id
+          $('parentId').value = r.parentId || ''
+          $('treeId').value = r.id
+        }
+        li.textContent = `${r.name}  |  id=${r.id}  |  parentId=${r.parentId ?? 'null'}`
+        li.appendChild(document.createTextNode(' '))
+        li.appendChild(btn)
+        ul.appendChild(li)
+      })
+      box.appendChild(ul)
+    }
+
+    $('searchProjects').onclick = async () => {
+      const q = $('searchName').value.trim()
+      const limit = parseInt($('searchLimit').value || '20', 10)
+      const url = new URL(getBase() + '/projects/search')
+      if (q) url.searchParams.set('q', q)
+      url.searchParams.set('limit', String(limit))
+      try {
+        const r = await fetch(url.toString())
+        const j = await r.json()
+        setJson($('searchResp'), j)
+        renderSearchList(j)
+      } catch (e) {
+        setJson($('searchResp'), { error: String(e) })
+      }
+    }
+
     $('getProject').onclick = async () => {
       const id = $('projId').value.trim()
       if (!id) {
@@ -236,6 +296,25 @@
         setJson($('projResp'), { error: String(e) })
       }
     }
+
+    const parentBtn = document.createElement('button')
+    parentBtn.textContent = '查父節點'
+    parentBtn.onclick = async () => {
+      const id = $('projId').value.trim()
+      if (!id) {
+        setJson($('projResp'), { error: '請填專案 ID' })
+        return
+      }
+      try {
+        const r = await fetch(getBase() + `/projects/${id}/parent`)
+        const j = await r.json()
+        setJson($('projResp'), j)
+        if (j?.parent?.id) $('parentId').value = j.parent.id
+      } catch (e) {
+        setJson($('projResp'), { error: String(e) })
+      }
+    }
+    document.querySelector('fieldset:last-of-type .row').appendChild(parentBtn)
 
     $('patchProject').onclick = async () => {
       const id = $('projId').value.trim()
