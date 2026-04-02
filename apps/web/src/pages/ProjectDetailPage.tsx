@@ -60,6 +60,15 @@ export default function ProjectDetailPage() {
     enabled: !!id && activeTab === 'members'
   });
 
+  const handleCancelInvite = async (inviteId: string) => {
+    try {
+      await api.post(`/invitations/${inviteId}/cancel`);
+      refetchInvitations();
+    } catch (err: any) {
+      alert(err.response?.data?.message || '撤回邀請失敗');
+    }
+  };
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail) return;
@@ -357,14 +366,19 @@ export default function ProjectDetailPage() {
                     {!invitations || invitations.length === 0 ? (
                       <p className="p-8 text-center text-gray-400 text-sm">暫無待處理邀請</p>
                     ) : invitations.map((inv: any) => (
-                      <div key={inv.id} className="p-4">
+                      <div key={inv.id} className="p-4 group/inv">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-bold text-gray-900">{inv.inviteeEmail}</span>
                           <span className="text-[10px] bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded font-black uppercase">PENDING</span>
                         </div>
                         <div className="text-[10px] text-gray-400 flex items-center justify-between">
                           <span>角色: {inv.role}</span>
-                          <span>邀請人: {inv.inviter.displayName || inv.inviter.email}</span>
+                          <button 
+                            onClick={() => handleCancelInvite(inv.id)}
+                            className="opacity-0 group-hover/inv:opacity-100 text-red-500 font-bold hover:underline transition-all"
+                          >
+                            撤回
+                          </button>
                         </div>
                         {/* 這裡可以加一個複製 Token 的功能，方便開發測試 */}
                         <div className="mt-2 text-[8px] text-gray-300 break-all select-all">ID: {inv.id}</div>

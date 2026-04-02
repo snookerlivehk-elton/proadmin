@@ -48,6 +48,20 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
     }
   };
 
+  const handleReject = async (inviteId: string) => {
+    setLoading(inviteId);
+    setError(null);
+    try {
+      await api.post(`/invitations/${inviteId}/reject`);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] });
+    } catch (err: any) {
+      setError(err.response?.data?.message || '拒絕邀請失敗');
+    } finally {
+      setLoading(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[80vh]">
@@ -90,15 +104,23 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
                       </div>
                     </div>
                     
-                    <button
-                      onClick={() => {
-                        setManualInviteId(inv.id);
-                        setShowManual(true);
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-blue-100 active:scale-95"
-                    >
-                      同意加入
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleReject(inv.id)}
+                        disabled={!!loading}
+                        className="px-4 py-2 border border-red-200 text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-all disabled:opacity-50"
+                      >
+                        拒絕
+                      </button>
+                      <button
+                        onClick={() => handleAccept(inv.id)}
+                        disabled={!!loading}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-blue-100 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {loading === inv.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                        同意加入
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

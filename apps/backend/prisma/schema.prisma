@@ -22,10 +22,11 @@ enum MemberRole {
   MANAGER
 }
 
-enum InvitationStatus {
+enum ProjectInvitationStatus {
   PENDING
   ACCEPTED
-  EXPIRED
+  REJECTED
+  CANCELLED
 }
 
 model User {
@@ -83,7 +84,7 @@ model ProjectInvitation {
   inviteeEmail  String
   role          MemberRole
   inviterUserId String
-  status        InvitationStatus @default(PENDING)
+  status        ProjectInvitationStatus @default(PENDING)
   tokenHash     String
   expiresAt     DateTime
   createdAt     DateTime         @default(now())

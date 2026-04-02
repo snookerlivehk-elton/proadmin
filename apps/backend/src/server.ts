@@ -543,6 +543,53 @@ app.post('/invitations/:id/accept', requireAuth, async (req: Request, res: Respo
   }
 })
 
+app.post('/invitations/:id/reject', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params
+  const userId = (req as any).userId as string
+
+  try {
+    const invite = await prisma.projectInvitation.findUnique({ where: { id } })
+    if (!invite || invite.status !== 'PENDING') return res.status(404).json({ error: 'invalid_invite' })
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (user?.email.toLowerCase() !== invite.inviteeEmail.toLowerCase()) {
+      return res.status(403).json({ error: 'forbidden', message: '只有受邀本人可以拒絕邀請' })
+    }
+
+    await prisma.projectInvitation.update({
+      where: { id },
+      data: { status: 'REJECTED' }
+    })
+    res.json({ ok: true })
+  } catch (e: any) {
+    res.status(500).json({ error: 'reject_failed' })
+  }
+})
+
+app.post('/invitations/:id/cancel', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params
+  const userId = (req as any).userId as string
+
+  try {
+    const invite = await prisma.projectInvitation.findUnique({ where: { id } })
+    if (!invite || invite.status !== 'PENDING') return res.status(404).json({ error: 'invalid_invite' })
+
+    // 檢查是否為邀請人，或專案擁有者
+    const project = await prisma.project.findUnique({ where: { id: invite.projectId } })
+    if (invite.inviterUserId !== userId && project?.ownerUserId !== userId) {
+      return res.status(403).json({ error: 'forbidden', message: '只有邀請人或專案擁有者可以撤回邀請' })
+    }
+
+    await prisma.projectInvitation.update({
+      where: { id },
+      data: { status: 'CANCELLED' }
+    })
+    res.json({ ok: true })
+  } catch (e: any) {
+    res.status(500).json({ error: 'cancel_failed' })
+  }
+})
+
 app.get('/', (_req: Request, res: Response) => {
   res.status(200).send('hp-collab backend online. Check /healthz')
 })
