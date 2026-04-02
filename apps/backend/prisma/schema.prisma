@@ -39,6 +39,7 @@ model User {
   memberships ProjectMembership[]
   ownedProjects Project[] @relation("OwnedProjects")
   auditLogs   AuditLog[] @relation("AuditActor")
+  invitationsSent ProjectInvitation[] @relation("Inviter")
 }
 
 model Project {
@@ -87,7 +88,7 @@ model ProjectInvitation {
   createdAt     DateTime         @default(now())
 
   project       Project @relation(fields: [projectId], references: [id])
-  inviter       User    @relation(fields: [inviterUserId], references: [id])
+  inviter       User    @relation("Inviter", fields: [inviterUserId], references: [id])
 
   @@index([projectId])
   @@index([inviteeEmail])
