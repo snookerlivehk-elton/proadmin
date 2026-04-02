@@ -16,13 +16,22 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // 取得最近專案
-  const { data: projects, isLoading } = useQuery<Project[]>({
-    queryKey: ['projects', 'recent'],
+  const { data: dashboardData, isLoading } = useQuery<any>({
+    queryKey: ['dashboard', 'data'],
     queryFn: async () => {
-      const { data } = await api.get('/projects/recent');
-      return data;
+      const [projResp, meResp] = await Promise.all([
+        api.get('/projects/recent'),
+        api.get('/auth/me')
+      ]);
+      return {
+        projects: projResp.data,
+        pendingInvitations: meResp.data.pendingInvitations
+      };
     }
   });
+
+  const projects = dashboardData?.projects;
+  const pendingInvitations = dashboardData?.pendingInvitations;
 
   // 搜尋功能
   const { data: searchResults, isFetching: isSearching } = useQuery<Project[]>({
@@ -80,6 +89,24 @@ export default function DashboardPage() {
             <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">我的專案</h2>
             <p className="text-gray-500 mt-2 font-medium text-lg">管理與協作您的階層式專案</p>
           </div>
+          
+          {pendingInvitations > 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-2xl flex items-center gap-4 animate-bounce">
+              <div className="bg-yellow-400 p-2 rounded-full text-white">
+                <Mail className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-yellow-800">您有 {pendingInvitations} 個待處理邀請</p>
+                <button 
+                  onClick={() => setIsAcceptModalOpen(true)}
+                  className="text-xs font-black text-yellow-600 underline uppercase"
+                >
+                  立即查看並加入
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsAcceptModalOpen(true)}

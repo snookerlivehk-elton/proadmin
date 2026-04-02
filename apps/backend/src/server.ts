@@ -131,7 +131,16 @@ app.get('/auth/me', optionalAuth, async (req: Request, res: Response) => {
   if (!userId) return res.json({ user: null })
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) return res.json({ user: null })
-  res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+  
+  // 順便檢查是否有屬於該 Email 的待處理邀請
+  const pendingCount = await prisma.projectInvitation.count({
+    where: { inviteeEmail: user.email.toLowerCase(), status: 'PENDING' }
+  })
+
+  res.json({ 
+    user: { id: user.id, email: user.email, displayName: user.displayName },
+    pendingInvitations: pendingCount
+  })
 })
 
 app.get('/debug/db', async (_req: Request, res: Response) => {

@@ -28,7 +28,7 @@ export default function ProjectDetailPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'VIEWER' | 'MANAGER'>('VIEWER');
   const [isInviting, setIsInviting] = useState(false);
-  const [inviteMsg, setInviteMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [inviteMsg, setInviteMsg] = useState<{ type: 'success' | 'error', text: string, data?: any } | null>(null);
 
   // 取得專案詳情
   const { data: project, isLoading: isLoadingProject } = useQuery<Project>({
@@ -66,8 +66,12 @@ export default function ProjectDetailPage() {
     setIsInviting(true);
     setInviteMsg(null);
     try {
-      await api.post(`/projects/${id}/invitations`, { email: inviteEmail, role: inviteRole });
-      setInviteMsg({ type: 'success', text: `已向 ${inviteEmail} 發送邀請！` });
+      const { data } = await api.post(`/projects/${id}/invitations`, { email: inviteEmail, role: inviteRole });
+      setInviteMsg({ 
+        type: 'success', 
+        text: `已向 ${inviteEmail} 發送邀請！`,
+        data: data // 包含 token
+      });
       setInviteEmail('');
       refetchInvitations();
     } catch (err: any) {
@@ -286,9 +290,24 @@ export default function ProjectDetailPage() {
                   </button>
                 </form>
                 {inviteMsg && (
-                  <p className={`mt-4 text-sm font-bold ${inviteMsg.type === 'success' ? 'text-green-300' : 'text-red-300'}`}>
-                    {inviteMsg.text}
-                  </p>
+                  <div className={`mt-6 p-4 rounded-2xl border ${
+                    inviteMsg.type === 'success' ? 'bg-green-500/20 border-green-400 text-green-100' : 'bg-red-500/20 border-red-400 text-red-100'
+                  }`}>
+                    <p className="font-bold mb-2">{inviteMsg.text}</p>
+                    {inviteMsg.data && (
+                      <div className="space-y-2 text-xs font-mono bg-black/20 p-3 rounded-xl">
+                        <div className="flex justify-between items-center">
+                          <span>邀請 ID:</span>
+                          <span className="bg-white/10 px-2 py-1 rounded select-all">{inviteMsg.data.id}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span>邀請 Token:</span>
+                          <span className="bg-white/10 px-2 py-1 rounded select-all">{inviteMsg.data.token}</span>
+                        </div>
+                        <p className="text-[10px] text-blue-200 mt-2 italic">* 請複製以上資訊傳送給受邀者。</p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
