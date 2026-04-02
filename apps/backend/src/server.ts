@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import type { Request, Response } from 'express'
 
 const app = express()
 app.use(express.json())
@@ -13,11 +14,11 @@ app.use(
   })
 )
 
-app.get('/healthz', (_req, res) => {
+app.get('/healthz', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' })
 })
 
-app.get('/projects/:id/tree', (_req, res) => {
+app.get('/projects/:id/tree', (_req: Request, res: Response) => {
   res.json({
     id: 'sample-root',
     name: 'Root Project',
