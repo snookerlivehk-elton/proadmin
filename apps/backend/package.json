@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "sh -c \"prisma migrate resolve --applied 20260402121500_init || true && prisma migrate deploy && node dist/server.js\"",
+    "start": "sh -c \"prisma db push && node dist/server.js\"",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
