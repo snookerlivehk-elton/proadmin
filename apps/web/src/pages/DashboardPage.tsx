@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Layout, LogOut, FolderPlus, Search, ChevronRight, Folder, Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, Project } from '../lib/api';
+import { api, type Project } from '../lib/api';
 import CreateProjectModal from '../components/CreateProjectModal';
 
 export default function DashboardPage() {
