@@ -126,6 +126,26 @@ app.post('/auth/logout', (_req: Request, res: Response) => {
   res.json({ ok: true })
 })
 
+app.get('/auth/invitations', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return res.status(404).json({ error: 'user_not_found' })
+
+    const invites = await prisma.projectInvitation.findMany({
+      where: { inviteeEmail: user.email.toLowerCase(), status: 'PENDING' },
+      include: { 
+        project: { select: { id: true, name: true, description: true } },
+        inviter: { select: { displayName: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+    res.json(invites)
+  } catch (e: any) {
+    res.status(500).json({ error: 'get_auth_invites_failed' })
+  }
+})
+
 app.get('/auth/me', optionalAuth, async (req: Request, res: Response) => {
   const userId = (req as any).userId as string | undefined
   if (!userId) return res.json({ user: null })
