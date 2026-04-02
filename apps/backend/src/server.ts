@@ -26,6 +26,10 @@ app.get('/projects/:id/tree', (_req: Request, res: Response) => {
   })
 })
 
+app.get('/', (_req: Request, res: Response) => {
+  res.status(200).send('hp-collab backend online. Check /healthz')
+})
+
 const port = Number(process.env.PORT || 3000)
 app.listen(port, () => {
   process.stdout.write(`backend listening on :${port}\n`)
