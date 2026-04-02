@@ -20,15 +20,15 @@ FROM nginx:stable-alpine
 # 複製建構好的檔案到 Nginx 目錄
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
-# 建立自定義 Nginx 配置以支援 SPA 路由 (try_files)
+# 建立一個啟動腳本來處理連接埠
 RUN echo 'server { \
-    listen 80; \
+    listen ${PORT}; \
     location / { \
         root /usr/share/nginx/html; \
         index index.html index.htm; \
         try_files $uri $uri/ /index.html; \
     } \
-}' > /etc/nginx/conf.d/default.conf
+}' > /etc/nginx/conf.d/default.template
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# 使用 sh 來替換連接埠並啟動 nginx
+CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/conf.d/default.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
