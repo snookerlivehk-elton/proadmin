@@ -68,17 +68,23 @@ app.post('/auth/register', async (req: Request, res: Response) => {
     const existing = await prisma.user.findUnique({ where: { email } })
     if ((existing as any)?.passwordHash) return res.status(409).json({ error: 'email_taken' })
     const passwordHash = bcrypt.hashSync(parsed.data.password, 10)
-    const userR = existing
-      ? await prisma.user.update({
-          where: { id: existing.id },
-          data: { passwordHash, displayName: parsed.data.displayName ?? existing.displayName } as any
-        })
-      : await prisma.user.create({
-          data: { email, passwordHash, displayName: parsed.data.displayName ?? email } as any
-        })
-    const user: any = userR as any
-    issueToken(res, { id: user!.id, email: user!.email, displayName: user!.displayName || null })
-    res.json({ user: { id: user!.id, email: user!.email, displayName: user!.displayName } })
+    
+    // 使用 upsert 來處理註冊，確保原子性並解決唯一索引衝突問題
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { 
+        passwordHash, 
+        displayName: parsed.data.displayName ?? undefined 
+      },
+      create: { 
+        email, 
+        passwordHash, 
+        displayName: parsed.data.displayName ?? email 
+      }
+    })
+
+    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
   } catch (e: any) {
     res.status(500).json({ error: 'register_failed', message: e?.message ?? 'unknown' })
   }
