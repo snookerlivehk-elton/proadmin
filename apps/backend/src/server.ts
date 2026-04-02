@@ -65,13 +65,19 @@ app.post('/auth/register', async (req: Request, res: Response) => {
   const email = parsed.data.email.toLowerCase()
   try {
     const existing = await prisma.user.findUnique({ where: { email } })
-    if (existing?.passwordHash) return res.status(409).json({ error: 'email_taken' })
+    if ((existing as any)?.passwordHash) return res.status(409).json({ error: 'email_taken' })
     const passwordHash = bcrypt.hashSync(parsed.data.password, 10)
-    const user = existing
-      ? await prisma.user.update({ where: { id: existing.id }, data: { passwordHash, displayName: parsed.data.displayName ?? existing.displayName } })
-      : await prisma.user.create({ data: { email, passwordHash, displayName: parsed.data.displayName ?? email } })
-    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
-    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+    const userR = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: { passwordHash, displayName: parsed.data.displayName ?? existing.displayName } as any
+        })
+      : await prisma.user.create({
+          data: { email, passwordHash, displayName: parsed.data.displayName ?? email } as any
+        })
+    const user: any = userR as any
+    issueToken(res, { id: user!.id, email: user!.email, displayName: user!.displayName || null })
+    res.json({ user: { id: user!.id, email: user!.email, displayName: user!.displayName } })
   } catch (e: any) {
     res.status(500).json({ error: 'register_failed', message: e?.message ?? 'unknown' })
   }
@@ -84,11 +90,11 @@ app.post('/auth/login', async (req: Request, res: Response) => {
   const email = parsed.data.email.toLowerCase()
   try {
     const user = await prisma.user.findUnique({ where: { email } })
-    if (!user?.passwordHash) return res.status(401).json({ error: 'invalid_credentials' })
-    const ok = bcrypt.compareSync(parsed.data.password, user.passwordHash)
+    if (!user || !(user as any)?.passwordHash) return res.status(401).json({ error: 'invalid_credentials' })
+    const ok = bcrypt.compareSync(parsed.data.password, (user as any).passwordHash)
     if (!ok) return res.status(401).json({ error: 'invalid_credentials' })
-    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
-    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+    issueToken(res, { id: user!.id, email: user!.email, displayName: user!.displayName || null })
+    res.json({ user: { id: user!.id, email: user!.email, displayName: user!.displayName } })
   } catch (e: any) {
     res.status(500).json({ error: 'login_failed', message: e?.message ?? 'unknown' })
   }
@@ -139,13 +145,14 @@ app.post('/projects', requireAuth, async (req: Request, res: Response) => {
     const userId =
       ownerUserId ??
       (await (async () => {
-        if (!owner?.email && !(req as any).userId) return null
-        if (!owner?.email && (req as any).userId) return (req as any).userId
+        const currentUserId = (req as any).userId as string | undefined
+        if (!owner?.email) return currentUserId ?? null
         const email = owner.email.toLowerCase()
+        const displayName = owner.displayName ?? email
         const u = await prisma.user.upsert({
           where: { email },
           update: {},
-          create: { email, displayName: owner.displayName ?? email }
+          create: { email, displayName }
         })
         return u.id
       })())
@@ -340,49 +347,6 @@ app.post('/projects/:id/archive', requireAuth, async (req: Request, res: Respons
     res.json(updated)
   } catch (e: any) {
     res.status(500).json({ error: 'archive_failed', message: e?.message ?? 'unknown' })
-  }
-})
-
-app.get('/projects/search', async (req: Request, res: Response) => {
-  const q = (req.query.q as string) || ''
-  const limit = Math.min(Number(req.query.limit || 20), 100)
-  try {
-    const rows = await prisma.project.findMany({
-      where: q ? { name: { contains: q, mode: 'insensitive' } } : {},
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: { id: true, name: true, parentId: true, path: true, createdAt: true }
-    })
-    res.json(rows)
-  } catch (e: any) {
-    res.status(500).json({ error: 'search_failed', message: e?.message ?? 'unknown' })
-  }
-})
-
-app.get('/projects/recent', async (req: Request, res: Response) => {
-  const limit = Math.min(Number(req.query.limit || 20), 100)
-  try {
-    const rows = await prisma.project.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: { id: true, name: true, parentId: true, path: true, createdAt: true }
-    })
-    res.json(rows)
-  } catch (e: any) {
-    res.status(500).json({ error: 'recent_failed', message: e?.message ?? 'unknown' })
-  }
-})
-
-app.get('/projects/:id/parent', async (req: Request, res: Response) => {
-  const { id } = req.params
-  try {
-    const proj = await prisma.project.findUnique({ where: { id } })
-    if (!proj) return res.status(404).json({ error: 'not_found' })
-    if (!proj.parentId) return res.json({ parent: null })
-    const parent = await prisma.project.findUnique({ where: { id: proj.parentId } })
-    res.json({ parent })
-  } catch (e: any) {
-    res.status(500).json({ error: 'parent_failed', message: e?.message ?? 'unknown' })
   }
 })
 

@@ -321,6 +321,7 @@
         const r = await fetch(getBase() + '/projects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(body)
         })
         const j = await r.json()
@@ -345,6 +346,7 @@
         const r = await fetch(getBase() + `/projects/${parentId}/children`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(body)
         })
         const j = await r.json()
@@ -458,6 +460,7 @@
         const r = await fetch(getBase() + `/projects/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(body)
         })
         const j = await r.json()
@@ -478,6 +481,7 @@
         const r = await fetch(getBase() + `/projects/${id}/archive`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ archived })
         })
         const j = await r.json()
