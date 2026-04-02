@@ -3,8 +3,8 @@ WORKDIR /app
 # 先複製 package 定義與 prisma schema，確保安裝時 postinstall/prisma 能找到 schema
 COPY package.json ./package.json
 COPY prisma ./prisma
-# 安裝依賴並生成 Prisma Client
-RUN npm ci && npx prisma generate
+# 安裝依賴並生成 Prisma Client（使用 npm install，避免缺少 package-lock 導致 npm ci 失敗）
+RUN npm install && npx prisma generate
 # 複製其餘原始碼並建置
 COPY tsconfig.json ./tsconfig.json
 COPY src ./src
