@@ -1,11 +1,13 @@
 FROM node:18-alpine AS base
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+# 先複製 package 定義與 prisma schema，確保安裝時 postinstall/prisma 能找到 schema
+COPY package.json ./package.json
+COPY prisma ./prisma
+# 安裝依賴並生成 Prisma Client
+RUN npm ci && npx prisma generate
+# 複製其餘原始碼並建置
 COPY tsconfig.json ./tsconfig.json
 COPY src ./src
-COPY prisma ./prisma
-RUN npx prisma generate
 RUN npm run build
 
 FROM node:18-alpine
@@ -15,4 +17,5 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/dist ./dist
 COPY --from=base /app/prisma ./prisma
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+# 使用 package.json 的 start，會在啟動時執行 `prisma db push` 後再啟動服務
+CMD ["npm", "start"]
