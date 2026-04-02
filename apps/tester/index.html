@@ -196,6 +196,47 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>邀請與成員管理</legend>
+    <div class="row">
+      <div>
+        <label>專案 ID</label>
+        <input id="inviteProjId" placeholder="專案 id" />
+      </div>
+      <div>
+        <label>被邀請 Email</label>
+        <input id="inviteEmail" placeholder="user@example.com" />
+      </div>
+      <div>
+        <label>角色</label>
+        <select id="inviteRole">
+          <option value="VIEWER">VIEWER</option>
+          <option value="MANAGER">MANAGER</option>
+        </select>
+      </div>
+      <div>
+        <button id="btnInvite">發送邀請</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label>邀請 ID (Accept 用)</label>
+        <input id="acceptInviteId" placeholder="邀請 id" />
+      </div>
+      <div>
+        <label>邀請 Token</label>
+        <input id="acceptToken" placeholder="邀請 token" />
+      </div>
+      <div>
+        <button id="btnAccept">接受邀請</button>
+      </div>
+    </div>
+    <div>
+      <label>回應</label>
+      <pre id="inviteResp"></pre>
+    </div>
+  </fieldset>
+
   <script>
     const $ = (id) => document.getElementById(id)
     const setJson = (el, obj) => el.textContent = JSON.stringify(obj, null, 2)
@@ -488,6 +529,47 @@
         setJson($('projResp'), j)
       } catch (e) {
         setJson($('projResp'), { error: String(e) })
+      }
+    }
+
+    $('btnInvite').onclick = async () => {
+      const id = $('inviteProjId').value.trim()
+      const body = {
+        email: $('inviteEmail').value.trim(),
+        role: $('inviteRole').value
+      }
+      if (!id) return alert('請填專案 ID')
+      try {
+        const r = await fetch(getBase() + `/projects/${id}/invitations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        })
+        const j = await r.json()
+        setJson($('inviteResp'), j)
+        if (j.id) $('acceptInviteId').value = j.id
+        if (j.token) $('acceptToken').value = j.token
+      } catch (e) {
+        setJson($('inviteResp'), { error: String(e) })
+      }
+    }
+
+    $('btnAccept').onclick = async () => {
+      const id = $('acceptInviteId').value.trim()
+      const token = $('acceptToken').value.trim()
+      if (!id || !token) return alert('請填邀請 ID 與 Token')
+      try {
+        const r = await fetch(getBase() + `/invitations/${id}/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ token })
+        })
+        const j = await r.json()
+        setJson($('inviteResp'), j)
+      } catch (e) {
+        setJson($('inviteResp'), { error: String(e) })
       }
     }
 

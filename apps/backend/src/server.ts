@@ -7,7 +7,8 @@ import prisma from './db'
 import cookieParser from 'cookie-parser'
 import { OAuth2Client } from 'google-auth-library'
 import bcrypt from 'bcryptjs'
-import { issueToken, clearToken, requireAuth, optionalAuth } from './auth'
+import crypto from 'crypto'
+import { issueToken, clearToken, requireAuth, optionalAuth, checkProjectAccess } from './auth'
 
 const app = express()
 app.use(express.json())
@@ -191,7 +192,7 @@ const CreateChildSchema = z.object({
   ownerUserId: z.string().uuid().optional()
 })
 
-app.post('/projects/:id/children', requireAuth, async (req: Request, res: Response) => {
+app.post('/projects/:id/children', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
   console.log('POST /projects/:id/children', { params: req.params, body: req.body })
   const parsed = CreateChildSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -316,7 +317,7 @@ const UpdateProjectSchema = z.object({
   status: z.enum(['active', 'archived']).optional()
 }).refine(v => Object.keys(v).length > 0, { message: 'no_fields' })
 
-app.patch('/projects/:id', requireAuth, async (req: Request, res: Response) => {
+app.patch('/projects/:id', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
   const { id } = req.params
   const parsed = UpdateProjectSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -333,7 +334,7 @@ app.patch('/projects/:id', requireAuth, async (req: Request, res: Response) => {
 })
 
 const ArchiveSchema = z.object({ archived: z.boolean() })
-app.post('/projects/:id/archive', requireAuth, async (req: Request, res: Response) => {
+app.post('/projects/:id/archive', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
   const { id } = req.params
   const parsed = ArchiveSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -347,6 +348,85 @@ app.post('/projects/:id/archive', requireAuth, async (req: Request, res: Respons
     res.json(updated)
   } catch (e: any) {
     res.status(500).json({ error: 'archive_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+const InviteSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['VIEWER', 'MANAGER']).default('VIEWER')
+})
+
+app.post('/projects/:id/invitations', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  const userId = (req as any).userId as string
+  const parsed = InviteSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_body', details: parsed.error.flatten() })
+  const { email, role } = parsed.data
+
+  try {
+    // checkProjectAccess 已經檢查過專案存在與權限了
+    const token = crypto.randomBytes(32).toString('hex')
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+    const invite = await prisma.projectInvitation.create({
+      data: {
+        projectId,
+        inviteeEmail: email.toLowerCase(),
+        role: role as any,
+        inviterUserId: userId,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+      }
+    })
+    // 實戰中應寄信，測試階段直接回傳 token
+    res.json({ ...invite, token })
+  } catch (e: any) {
+    res.status(500).json({ error: 'invite_failed', message: e?.message ?? 'unknown' })
+  }
+})
+
+app.get('/invitations/:id', async (req: Request, res: Response) => {
+  const { id } = req.params
+  try {
+    const invite = await prisma.projectInvitation.findUnique({
+      where: { id },
+      include: { project: { select: { name: true } }, inviter: { select: { displayName: true, email: true } } }
+    })
+    if (!invite) return res.status(404).json({ error: 'not_found' })
+    res.json(invite)
+  } catch (e: any) {
+    res.status(500).json({ error: 'get_invite_failed' })
+  }
+})
+
+app.post('/invitations/:id/accept', requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params
+  const userId = (req as any).userId as string
+  const token = req.body.token as string
+  if (!token) return res.status(400).json({ error: 'token_required' })
+
+  try {
+    const invite = await prisma.projectInvitation.findUnique({ where: { id } })
+    if (!invite || invite.status !== 'PENDING') return res.status(404).json({ error: 'invalid_invite' })
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+    if (invite.tokenHash !== tokenHash) return res.status(401).json({ error: 'invalid_token' })
+    if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'expired' })
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (user?.email.toLowerCase() !== invite.inviteeEmail) {
+      return res.status(403).json({ error: 'email_mismatch', message: `請使用 ${invite.inviteeEmail} 登入以接受邀請` })
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.projectInvitation.update({ where: { id }, data: { status: 'ACCEPTED' } })
+      return await tx.projectMembership.upsert({
+        where: { projectId_userId: { projectId: invite.projectId, userId } },
+        update: { role: invite.role },
+        create: { projectId: invite.projectId, userId, role: invite.role }
+      })
+    })
+    res.json({ ok: true, membership: result })
+  } catch (e: any) {
+    res.status(500).json({ error: 'accept_failed', message: e?.message ?? 'unknown' })
   }
 })
 

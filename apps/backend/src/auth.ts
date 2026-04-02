@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
-import type { User } from '@prisma/client'
+import type { User, MemberRole } from '@prisma/client'
+import prisma from './db'
 
 const COOKIE_NAME = 'auth_token'
 const JWT_SECRET = process.env.JWT_SECRET || 'dev'
@@ -46,4 +47,40 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   const uid = getUserIdFromReq(req)
   if (uid) (req as any).userId = uid
   next()
+}
+
+/**
+ * 檢查對專案的存取權限
+ * @param minRole 最低要求的角色，若不傳則僅需為成員（或 owner）
+ */
+export function checkProjectAccess(minRole?: MemberRole) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const userId = (req as any).userId
+    const projectId = req.params.id || req.body.projectId
+    if (!userId || !projectId) return res.status(401).json({ error: 'unauthorized_or_no_project' })
+
+    try {
+      const project = await prisma.project.findUnique({ where: { id: projectId } })
+      if (!project) return res.status(404).json({ error: 'project_not_found' })
+
+      // 1. 若是 owner 直接放行
+      if (project.ownerUserId === userId) return next()
+
+      // 2. 檢查成員資格
+      const member = await prisma.projectMembership.findUnique({
+        where: { projectId_userId: { projectId, userId } }
+      })
+
+      if (!member) return res.status(403).json({ error: 'not_a_member' })
+
+      // 3. 檢查角色等級 (MANAGER > VIEWER)
+      if (minRole === 'MANAGER' && member.role !== 'MANAGER') {
+        return res.status(403).json({ error: 'manager_required' })
+      }
+
+      next()
+    } catch (e) {
+      res.status(500).json({ error: 'access_check_failed' })
+    }
+  }
 }
