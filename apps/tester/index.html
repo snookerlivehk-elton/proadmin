@@ -91,6 +91,48 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>讀取 / 更新 / 封存</legend>
+    <div class="row">
+      <div>
+        <label>專案 ID</label>
+        <input id="projId" placeholder="專案 id" />
+      </div>
+      <div>
+        <button id="getProject">讀取</button>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>新名稱</label>
+        <input id="updName" placeholder="新名稱（可留空）" />
+      </div>
+      <div>
+        <label>新描述</label>
+        <input id="updDesc" placeholder="新描述（可留空）" />
+      </div>
+      <div>
+        <button id="patchProject">更新</button>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>封存狀態</label>
+        <select id="archived">
+          <option value="true">封存</option>
+          <option value="false" selected>取消封存</option>
+        </select>
+      </div>
+      <div>
+        <button id="archiveProject">套用</button>
+      </div>
+    </div>
+    <div>
+      <label>回應</label>
+      <pre id="projResp"></pre>
+    </div>
+  </fieldset>
+
   <script>
     const $ = (id) => document.getElementById(id)
     const setJson = (el, obj) => el.textContent = JSON.stringify(obj, null, 2)
@@ -177,6 +219,67 @@
         setJson($('treeResp'), j)
       } catch (e) {
         setJson($('treeResp'), { error: String(e) })
+      }
+    }
+
+    $('getProject').onclick = async () => {
+      const id = $('projId').value.trim()
+      if (!id) {
+        setJson($('projResp'), { error: '請填專案 ID' })
+        return
+      }
+      try {
+        const r = await fetch(getBase() + `/projects/${id}`)
+        const j = await r.json()
+        setJson($('projResp'), j)
+      } catch (e) {
+        setJson($('projResp'), { error: String(e) })
+      }
+    }
+
+    $('patchProject').onclick = async () => {
+      const id = $('projId').value.trim()
+      if (!id) {
+        setJson($('projResp'), { error: '請填專案 ID' })
+        return
+      }
+      const body = {}
+      if ($('updName').value) body.name = $('updName').value
+      if ($('updDesc').value) body.description = $('updDesc').value
+      if (!Object.keys(body).length) {
+        setJson($('projResp'), { error: '至少填一個欄位' })
+        return
+      }
+      try {
+        const r = await fetch(getBase() + `/projects/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        const j = await r.json()
+        setJson($('projResp'), j)
+      } catch (e) {
+        setJson($('projResp'), { error: String(e) })
+      }
+    }
+
+    $('archiveProject').onclick = async () => {
+      const id = $('projId').value.trim()
+      if (!id) {
+        setJson($('projResp'), { error: '請填專案 ID' })
+        return
+      }
+      const archived = $('archived').value === 'true'
+      try {
+        const r = await fetch(getBase() + `/projects/${id}/archive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived })
+        })
+        const j = await r.json()
+        setJson($('projResp'), j)
+      } catch (e) {
+        setJson($('projResp'), { error: String(e) })
       }
     }
 
