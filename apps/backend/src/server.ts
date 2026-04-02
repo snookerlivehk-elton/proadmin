@@ -508,19 +508,25 @@ app.get('/invitations/:id', async (req: Request, res: Response) => {
 app.post('/invitations/:id/accept', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params
   const userId = (req as any).userId as string
-  const token = req.body.token as string
-  if (!token) return res.status(400).json({ error: 'token_required' })
+  const token = req.body.token as string | undefined
 
   try {
     const invite = await prisma.projectInvitation.findUnique({ where: { id } })
     if (!invite || invite.status !== 'PENDING') return res.status(404).json({ error: 'invalid_invite' })
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
-    if (invite.tokenHash !== tokenHash) return res.status(401).json({ error: 'invalid_token' })
     if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'expired' })
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
-    if (user?.email.toLowerCase() !== invite.inviteeEmail) {
-      return res.status(403).json({ error: 'email_mismatch', message: `請使用 ${invite.inviteeEmail} 登入以接受邀請` })
+    if (!user) return res.status(404).json({ error: 'user_not_found' })
+
+    // 安全邏輯優化：
+    // 1. 如果登入者的 Email 與受邀 Email 完全匹配，則不強制要求 Token (身分已驗證)
+    // 2. 如果 Email 不匹配，則必須提供正確的 Token (身分未驗證)
+    const emailMatches = user.email.toLowerCase() === invite.inviteeEmail.toLowerCase()
+    
+    if (!emailMatches) {
+      if (!token) return res.status(400).json({ error: 'token_required', message: 'Email 不匹配，請輸入邀請 Token' })
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+      if (invite.tokenHash !== tokenHash) return res.status(401).json({ error: 'invalid_token' })
     }
 
     const result = await prisma.$transaction(async (tx) => {

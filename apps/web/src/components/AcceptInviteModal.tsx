@@ -34,10 +34,8 @@ export default function AcceptInviteModal({ isOpen, onClose, onSuccess }: Accept
     setError(null);
 
     try {
-      // 如果是列表中的，後端目前需要 token。
-      // 為了簡化，我們暫時讓後端支持「如果是本人且在列表中，不需 token 也能加入」(待後續後端優化)
-      // 目前先要求手動輸入 Token，或是如果您能從發送者那邊拿到 Token
-      await api.post(`/invitations/${inviteId}/accept`, { token: token || manualToken });
+      // 邏輯優化：如果是在受邀列表中的邀請，後端現在支援「本人免 Token 加入」
+      await api.post(`/invitations/${inviteId}/accept`, { token: token });
       
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] });
