@@ -1,0 +1,11 @@
+{
+  "name": "hp-collab",
+  "private": true,
+  "workspaces": [
+    "apps/backend"
+  ],
+  "scripts": {
+    "dev": "npm -w @hp/backend run dev",
+    "build": "npm -w @hp/backend run build"
+  }
+}

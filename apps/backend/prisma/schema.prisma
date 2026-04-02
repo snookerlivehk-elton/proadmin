@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SystemRole {
+  USER
+  SUPERADMIN
+}
+
+enum ProjectStatus {
+  active
+  archived
+}
+
+enum MemberRole {
+  VIEWER
+  MANAGER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+model User {
+  id          String     @id @default(uuid())
+  email       String     @unique
+  googleId    String?    @unique
+  displayName String?
+  avatarUrl   String?
+  systemRole  SystemRole @default(USER)
+  createdAt   DateTime   @default(now())
+  memberships ProjectMembership[]
+  ownedProjects Project[] @relation("OwnedProjects")
+  auditLogs   AuditLog[] @relation("AuditActor")
+}
+
+model Project {
+  id           String            @id @default(uuid())
+  parentId     String?
+  parent       Project?          @relation("ProjectToChildren", fields: [parentId], references: [id])
+  children     Project[]         @relation("ProjectToChildren")
+  ownerUserId  String
+  owner        User              @relation("OwnedProjects", fields: [ownerUserId], references: [id])
+  name         String
+  description  String?
+  status       ProjectStatus     @default(active)
+  path         String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  memberships  ProjectMembership[]
+  invitations  ProjectInvitation[]
+  auditLogs    AuditLog[]
+
+  @@index([parentId])
+  @@index([path])
+}
+
+model ProjectMembership {
+  projectId String
+  userId    String
+  role      MemberRole
+  joinedAt  DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@id([projectId, userId])
+  @@index([userId])
+}
+
+model ProjectInvitation {
+  id            String           @id @default(uuid())
+  projectId     String
+  inviteeEmail  String
+  role          MemberRole
+  inviterUserId String
+  status        InvitationStatus @default(PENDING)
+  tokenHash     String
+  expiresAt     DateTime
+  createdAt     DateTime         @default(now())
+
+  project       Project @relation(fields: [projectId], references: [id])
+  inviter       User    @relation(fields: [inviterUserId], references: [id])
+
+  @@index([projectId])
+  @@index([inviteeEmail])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String
+  actionType  String
+  entityType  String
+  entityId    String
+  projectId   String?
+  payload     Json?
+  createdAt   DateTime @default(now())
+
+  actor       User     @relation("AuditActor", fields: [actorUserId], references: [id])
+  project     Project? @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, createdAt])
+}
