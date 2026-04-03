@@ -10,6 +10,7 @@ import {
   Settings, 
   FolderPlus, 
   ArrowLeft,
+  Lock,
   Mail,
   Loader2,
   Plus,
@@ -69,13 +70,14 @@ export default function ProjectDetailPage() {
   const [inviteMsg, setInviteMsg] = useState<{ type: 'success' | 'error', text: string, data?: any } | null>(null);
 
   // 取得專案詳情
-  const { data: project, isLoading: isLoadingProject } = useQuery<Project>({
+  const { data: project, isLoading: isLoadingProject, isError: isErrorProject, error: projectError } = useQuery<Project>({
     queryKey: ['projects', id],
     queryFn: async () => {
       const { data } = await api.get(`/projects/${id}`);
       return data;
     },
-    enabled: !!id
+    enabled: !!id,
+    retry: false // 如果沒權限，不需要重試
   });
 
   // 取得成員列表
@@ -101,7 +103,7 @@ export default function ProjectDetailPage() {
   });
 
   // 取得專案日誌
-  const { data: logs, isLoading: isLoadingLogs } = useQuery<ProjectLog[]>({
+  const { data: logs, isLoading: isLoadingLogs, isError: isErrorLogs } = useQuery<ProjectLog[]>({
     queryKey: ['projects', id, 'logs'],
     queryFn: async () => {
       const { data } = await api.get(`/projects/${id}/logs`);
@@ -236,25 +238,34 @@ export default function ProjectDetailPage() {
 
   if (isLoadingProject) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
       </div>
     );
   }
 
-  if (!project) {
+  if (isErrorProject) {
+    const errorMsg = (projectError as any)?.response?.data?.message || '您沒有權限存取此專案，或專案不存在。';
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">找不到專案</h2>
-        <button 
-          onClick={() => navigate('/dashboard')}
-          className="text-blue-600 hover:underline flex items-center gap-2"
-        >
-          <ArrowLeft className="h-4 w-4" /> 返回儀表板
-        </button>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+        <div className="bg-white rounded-3xl p-10 shadow-xl border border-gray-100 text-center max-w-md w-full">
+          <div className="bg-red-50 h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="h-10 w-10 text-red-500" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">存取受限</h3>
+          <p className="text-gray-500 mb-8">{errorMsg}</p>
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+          >
+            回儀表板
+          </button>
+        </div>
       </div>
     );
   }
+
+  if (!project) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -633,6 +644,11 @@ export default function ProjectDetailPage() {
             {isLoadingLogs ? (
               <div className="flex justify-center py-20">
                 <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+              </div>
+            ) : isErrorLogs ? (
+              <div className="bg-red-50 border border-red-100 rounded-3xl py-20 flex flex-col items-center justify-center text-center">
+                <h4 className="text-lg font-bold text-red-900 mb-2">無法載入日誌</h4>
+                <p className="text-red-500 max-w-xs px-4">您可能沒有權限查看此專案的日誌內容。</p>
               </div>
             ) : !logs || logs.length === 0 ? (
               <div className="bg-white rounded-3xl p-20 shadow-sm border border-gray-100 text-center">
