@@ -10,6 +10,15 @@ export const api = axios.create({
   },
 });
 
+// 請求攔截器：自動夾帶 LocalStorage 中的 Token (修復行動端 Cookie 問題)
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // 使用者介面定義
 export interface User {
   id: string;

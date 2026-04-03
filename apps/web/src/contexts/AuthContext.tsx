@@ -33,17 +33,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const { data } = await api.post('/auth/login', { email, password });
+    if (data.token) {
+      localStorage.setItem('auth_token', data.token);
+    }
     setUser(data.user);
   };
 
   const googleLogin = async (credential: string) => {
     const { data } = await api.post('/auth/google', { credential });
+    if (data.token) {
+      localStorage.setItem('auth_token', data.token);
+    }
     setUser(data.user);
   };
 
   const logout = async () => {
-    await api.post('/auth/logout');
-    setUser(null);
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      localStorage.removeItem('auth_token');
+      setUser(null);
+    }
   };
 
   return (
