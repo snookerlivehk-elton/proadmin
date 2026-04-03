@@ -16,7 +16,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // 取得最近專案
-  const { data: dashboardData, isLoading, isError, refetch } = useQuery<any>({
+  const { data: dashboardData, isLoading, isError, error: queryError, refetch } = useQuery<any>({
     queryKey: ['dashboard', 'data'],
     queryFn: async () => {
       try {
@@ -28,8 +28,15 @@ export default function DashboardPage() {
           projects: Array.isArray(projResp.data) ? projResp.data : [],
           pendingInvitations: meResp.data?.pendingInvitations || 0
         };
-      } catch (err) {
+      } catch (err: any) {
         console.error('Fetch Dashboard Error:', err);
+        // 如果是 401，可能是手機瀏覽器 Cookie 問題
+        if (err.response?.status === 401) {
+          throw new Error('登入逾期或權限不足，請重新登入 (401)');
+        }
+        if (err.message === 'Network Error') {
+          throw new Error('網路連接失敗，請檢查網路或連線安全性 (Network Error)');
+        }
         throw err;
       }
     }
@@ -163,13 +170,25 @@ export default function DashboardPage() {
         ) : isError ? (
           <div className="bg-red-50 border border-red-100 rounded-3xl py-20 flex flex-col items-center justify-center text-center">
             <h3 className="text-xl font-bold text-red-900 mb-2">無法載入專案</h3>
-            <p className="text-red-500 max-w-xs px-4 mb-6">發生了錯誤，請嘗試重新整理頁面或稍後再試。</p>
-            <button 
-              onClick={() => refetch()}
-              className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 transition-all"
-            >
-              重新整理
-            </button>
+            <p className="text-red-500 max-w-xs px-4 mb-6">
+              {queryError instanceof Error ? queryError.message : '發生了未知錯誤，請稍後再試。'}
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => refetch()}
+                className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 transition-all"
+              >
+                重新整理
+              </button>
+              {(queryError as any)?.message?.includes('401') && (
+                <button 
+                  onClick={handleLogout}
+                  className="bg-white border border-red-600 text-red-600 px-6 py-2 rounded-xl font-bold hover:bg-red-50 transition-all"
+                >
+                  重新登入
+                </button>
+              )}
+            </div>
           </div>
         ) : !displayProjects || displayProjects.length === 0 ? (
           <div className="bg-white rounded-3xl border-2 border-dashed border-gray-100 py-24 flex flex-col items-center justify-center text-center">
