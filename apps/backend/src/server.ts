@@ -67,13 +67,27 @@ app.use(express.json())
 app.disable('x-powered-by')
 app.use(cookieParser())
 
+// 偵錯日誌：記錄所有請求與 Origin
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${req.get('origin') || 'N/A'}`)
+  next()
+})
+
 const allowOrigin = process.env.APP_BASE_URL || '*'
 const allowList = allowOrigin === '*' ? '*' : allowOrigin.split(',').map(s => s.trim()).filter(Boolean)
+
 app.use(cors({
   origin: (origin, cb) => {
+    // 如果沒有 origin (例如同源或某些工具)，允許
     if (!origin) return cb(null, true)
-    if (allowList === '*' || (Array.isArray(allowList) && allowList.includes(origin))) return cb(null, true)
-    return cb(new Error('CORS'), false)
+    
+    // 如果 allowList 是 '*'，在有 credentials 的情況下必須回傳請求的 origin 而不能是 '*'
+    if (allowList === '*') return cb(null, true)
+    
+    if (Array.isArray(allowList) && allowList.includes(origin)) return cb(null, true)
+    
+    console.warn(`CORS blocked for origin: ${origin}. AllowList: ${allowList}`)
+    return cb(new Error('CORS blocked'), false)
   },
   credentials: true
 }))
