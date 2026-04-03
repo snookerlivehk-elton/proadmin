@@ -66,20 +66,33 @@ export function checkProjectAccess(minRole?: MemberRole) {
       // 1. 若是 owner 直接放行
       if (project.ownerUserId === userId) return next()
 
-      // 2. 檢查成員資格
-      const member = await prisma.projectMembership.findUnique({
-        where: { projectId_userId: { projectId, userId } }
+      // 2. 實作權限繼承邏輯：檢查路徑中任何一個節點的成員資格
+      // path 格式範例: /root-id/child-id/grandchild-id
+      const pathIds = project.path.split('/').filter(Boolean)
+      
+      const memberships = await prisma.projectMembership.findMany({
+        where: {
+          userId,
+          projectId: { in: pathIds }
+        }
       })
 
-      if (!member) return res.status(403).json({ error: 'not_a_member' })
+      if (memberships.length === 0) {
+        return res.status(403).json({ error: 'not_a_member', message: '您不是此專案或其父專案的成員' })
+      }
 
-      // 3. 檢查角色等級 (MANAGER > VIEWER)
-      if (minRole === 'MANAGER' && member.role !== 'MANAGER') {
-        return res.status(403).json({ error: 'manager_required' })
+      // 3. 檢查角色等級
+      // 如果要求 MANAGER，則在繼承路徑中至少要有一個節點具有 MANAGER 身份
+      if (minRole === 'MANAGER') {
+        const isManager = memberships.some(m => m.role === 'MANAGER')
+        if (!isManager) {
+          return res.status(403).json({ error: 'manager_required', message: '需要管理員權限' })
+        }
       }
 
       next()
     } catch (e) {
+      console.error('Access check failed:', e)
       res.status(500).json({ error: 'access_check_failed' })
     }
   }

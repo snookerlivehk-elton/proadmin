@@ -344,7 +344,7 @@ app.post('/projects/:id/children', requireAuth, checkProjectAccess('MANAGER'), a
   }
 })
 
-app.get('/projects/:id/tree', async (req: Request, res: Response) => {
+app.get('/projects/:id/tree', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
   const { id } = req.params
   try {
     const root = await prisma.project.findUnique({ where: { id } })
@@ -421,7 +421,7 @@ app.get('/projects/recent', requireAuth, async (req: Request, res: Response) => 
   }
 })
 
-app.get('/projects/:id/parent', async (req: Request, res: Response) => {
+app.get('/projects/:id/parent', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
   const { id } = req.params
   try {
     const proj = await prisma.project.findUnique({ where: { id } })
@@ -435,7 +435,7 @@ app.get('/projects/:id/parent', async (req: Request, res: Response) => {
 })
 // --- End specific routes ---
 
-app.get('/projects/:id', async (req: Request, res: Response) => {
+app.get('/projects/:id', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
   const { id } = req.params
   try {
     const proj = await prisma.project.findUnique({ where: { id } })
