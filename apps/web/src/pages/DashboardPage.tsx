@@ -16,22 +16,27 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // 取得最近專案
-  const { data: dashboardData, isLoading } = useQuery<any>({
+  const { data: dashboardData, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ['dashboard', 'data'],
     queryFn: async () => {
-      const [projResp, meResp] = await Promise.all([
-        api.get('/projects/recent'),
-        api.get('/auth/me')
-      ]);
-      return {
-        projects: projResp.data,
-        pendingInvitations: meResp.data.pendingInvitations
-      };
+      try {
+        const [projResp, meResp] = await Promise.all([
+          api.get('/projects/recent'),
+          api.get('/auth/me')
+        ]);
+        return {
+          projects: Array.isArray(projResp.data) ? projResp.data : [],
+          pendingInvitations: meResp.data?.pendingInvitations || 0
+        };
+      } catch (err) {
+        console.error('Fetch Dashboard Error:', err);
+        throw err;
+      }
     }
   });
 
-  const projects = dashboardData?.projects;
-  const pendingInvitations = dashboardData?.pendingInvitations;
+  const projects = Array.isArray(dashboardData?.projects) ? dashboardData.projects : [];
+  const pendingInvitations = dashboardData?.pendingInvitations || 0;
 
   // 搜尋功能
   const { data: searchResults, isFetching: isSearching } = useQuery<Project[]>({
@@ -39,12 +44,12 @@ export default function DashboardPage() {
     queryFn: async () => {
       if (!searchQuery) return [];
       const { data } = await api.get(`/projects/search?q=${searchQuery}`);
-      return data;
+      return Array.isArray(data) ? data : [];
     },
     enabled: searchQuery.length > 0
   });
 
-  const displayProjects = searchQuery ? searchResults : projects;
+  const displayProjects = searchQuery ? (Array.isArray(searchResults) ? searchResults : []) : projects;
 
   const handleLogout = async () => {
     await logout();
@@ -154,6 +159,17 @@ export default function DashboardPage() {
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 className="h-10 w-10 text-blue-500 animate-spin" />
             <p className="text-gray-400 font-medium">載入專案中...</p>
+          </div>
+        ) : isError ? (
+          <div className="bg-red-50 border border-red-100 rounded-3xl py-20 flex flex-col items-center justify-center text-center">
+            <h3 className="text-xl font-bold text-red-900 mb-2">無法載入專案</h3>
+            <p className="text-red-500 max-w-xs px-4 mb-6">發生了錯誤，請嘗試重新整理頁面或稍後再試。</p>
+            <button 
+              onClick={() => refetch()}
+              className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 transition-all"
+            >
+              重新整理
+            </button>
           </div>
         ) : !displayProjects || displayProjects.length === 0 ? (
           <div className="bg-white rounded-3xl border-2 border-dashed border-gray-100 py-24 flex flex-col items-center justify-center text-center">

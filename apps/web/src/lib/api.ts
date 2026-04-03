@@ -52,3 +52,26 @@ export interface ProjectLog {
     avatarUrl?: string;
   };
 }
+
+export interface FinanceSummary {
+  INCOME: number;
+  EXPENSE: number;
+  ENGINEERING: number;
+  balance: number;
+}
+
+export interface AuditLog {
+  id: string;
+  actorUserId: string;
+  actionType: string;
+  entityType: string;
+  entityId: string;
+  projectId: string | null;
+  payload: any;
+  createdAt: string;
+  actor: {
+    displayName: string | null;
+    email: string;
+    avatarUrl?: string;
+  };
+}

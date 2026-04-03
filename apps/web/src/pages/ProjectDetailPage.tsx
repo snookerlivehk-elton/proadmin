@@ -21,9 +21,15 @@ import {
   CheckCircle,
   Trash2,
   Paperclip,
-  Calendar
+  Calendar,
+  Activity,
+  History,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  DollarSign,
+  Layers
 } from 'lucide-react';
-import { api, type Project, type User, type ProjectLog } from '../lib/api';
+import { api, type Project, type User, type ProjectLog, type AuditLog, type FinanceSummary } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import CreateProjectModal from '../components/CreateProjectModal';
 import CreateProjectLogModal from '../components/CreateProjectLogModal';
@@ -36,6 +42,18 @@ const LOG_TYPE_MAP: Record<string, { label: string; icon: any; colorClass: strin
   COMPLETION: { label: '完工', icon: CheckCircle, colorClass: 'text-purple-600', bgClass: 'bg-purple-50' },
 };
 
+const AUDIT_ACTION_MAP: Record<string, string> = {
+  PROJECT_CREATE: '建立了專案',
+  SUBPROJECT_CREATE: '建立了子專案',
+  MEMBER_INVITE: '發送了成員邀請',
+  INVITE_ACCEPT: '接受了邀請並加入專案',
+  INVITE_REJECT: '拒絕了專案邀請',
+  INVITE_CANCEL: '撤回了成員邀請',
+  LOG_CREATE: '新增了一條項目日誌',
+  LOG_DELETE: '刪除了項目日誌',
+  MEMBER_REMOVE: '將成員移出了專案',
+};
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, logout } = useAuth();
@@ -43,7 +61,8 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'subprojects' | 'members' | 'logs' | 'settings'>('subprojects');
+  const [activeTab, setActiveTab] = useState<'subprojects' | 'members' | 'logs' | 'activities' | 'settings'>('subprojects');
+  const [isFinanceRecursive, setIsFinanceRecursive] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'VIEWER' | 'MANAGER'>('VIEWER');
   const [isInviting, setIsInviting] = useState(false);
@@ -91,6 +110,26 @@ export default function ProjectDetailPage() {
     enabled: !!id && activeTab === 'logs'
   });
 
+  // 取得活動記錄
+  const { data: auditLogs, isLoading: isLoadingAudit } = useQuery<AuditLog[]>({
+    queryKey: ['projects', id, 'audit-logs'],
+    queryFn: async () => {
+      const { data } = await api.get(`/projects/${id}/audit-logs`);
+      return data;
+    },
+    enabled: !!id && activeTab === 'activities'
+  });
+
+  // 取得遞迴財務匯總
+  const { data: recursiveFinance } = useQuery<FinanceSummary>({
+    queryKey: ['projects', id, 'finance-recursive'],
+    queryFn: async () => {
+      const { data } = await api.get(`/projects/${id}/finance-recursive`);
+      return data;
+    },
+    enabled: !!id && activeTab === 'logs' && isFinanceRecursive
+  });
+
   const handleCancelInvite = async (inviteId: string) => {
     try {
       await api.post(`/invitations/${inviteId}/cancel`);
@@ -116,6 +155,16 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['projects', id, 'logs'] });
     } catch (err: any) {
       alert(err.response?.data?.message || '刪除日誌失敗');
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!confirm('確定要將此成員移出專案嗎？')) return;
+    try {
+      await api.delete(`/projects/${id}/members/${userId}`);
+      queryClient.invalidateQueries({ queryKey: ['projects', id, 'members'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || '移除成員失敗');
     }
   };
 
@@ -167,6 +216,22 @@ export default function ProjectDetailPage() {
 
   const handleCreateSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['projects', id, 'tree'] });
+  };
+
+  const myRole = members?.find(m => m.user.id === user?.id)?.role || (project?.ownerUserId === user?.id ? 'OWNER' : null);
+  const isManager = myRole === 'OWNER' || myRole === 'MANAGER';
+
+  // 財務加總
+  const totalIncome = logs?.filter(l => l.type === 'INCOME').reduce((acc, l) => acc + Number(l.amount || 0), 0) || 0;
+  const totalExpense = logs?.filter(l => l.type === 'EXPENSE').reduce((acc, l) => acc + Number(l.amount || 0), 0) || 0;
+  const totalEngineering = logs?.filter(l => l.type === 'ENGINEERING').reduce((acc, l) => acc + Number(l.amount || 0), 0) || 0;
+  const balance = totalIncome - totalExpense;
+
+  const displayFinance = isFinanceRecursive && recursiveFinance ? recursiveFinance : {
+    INCOME: totalIncome,
+    EXPENSE: totalExpense,
+    ENGINEERING: totalEngineering,
+    balance: balance
   };
 
   if (isLoadingProject) {
@@ -284,6 +349,17 @@ export default function ProjectDetailPage() {
             <div className="flex items-center gap-2">
               <ClipboardList className="h-4 w-4" />
               項目日誌
+            </div>
+          </button>
+          <button 
+            onClick={() => setActiveTab('activities')}
+            className={`py-4 px-2 font-bold text-sm transition-all border-b-2 relative ${
+              activeTab === 'activities' ? 'text-blue-600 border-blue-600' : 'text-gray-400 border-transparent hover:text-gray-600'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              活動記錄
             </div>
           </button>
           <button 
@@ -410,6 +486,16 @@ export default function ProjectDetailPage() {
                           <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
                             m.role === 'OWNER' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'
                           }`}>{m.role}</span>
+                          
+                          {isManager && m.role !== 'OWNER' && m.user.id !== user?.id && (
+                            <button
+                              onClick={() => handleRemoveMember(m.user.id)}
+                              className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                              title="移出專案"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -470,7 +556,67 @@ export default function ProjectDetailPage() {
 
         {activeTab === 'logs' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex items-center justify-between">
+            {/* 財務匯總切換與標題 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                <DollarSign className="h-6 w-6 text-blue-600" />
+                財務數據概覽
+              </h3>
+              <div className="flex bg-gray-100 p-1 rounded-xl self-start">
+                <button
+                  onClick={() => setIsFinanceRecursive(false)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                    !isFinanceRecursive ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  僅本層項目
+                </button>
+                <button
+                  onClick={() => setIsFinanceRecursive(true)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                    isFinanceRecursive ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Layers className="h-3 w-3" />
+                  包含子專案
+                </button>
+              </div>
+            </div>
+
+            {/* 財務概覽卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-green-50 p-3 rounded-2xl text-green-600">
+                  <ArrowUpCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">總收入</div>
+                  <div className="text-xl font-black text-gray-900">HK$ {displayFinance.INCOME.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-red-50 p-3 rounded-2xl text-red-600">
+                  <ArrowDownCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">總支出</div>
+                  <div className="text-xl font-black text-gray-900">HK$ {displayFinance.EXPENSE.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-blue-50 p-3 rounded-2xl text-blue-600">
+                  <DollarSign className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">結餘 / 淨利</div>
+                  <div className={`text-xl font-black ${displayFinance.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    HK$ {displayFinance.balance.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-gray-100 pt-6">
               <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
                 <ClipboardList className="h-6 w-6 text-blue-600" />
                 項目日誌紀錄
@@ -589,6 +735,44 @@ export default function ProjectDetailPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'activities' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <h3 className="text-xl font-black text-gray-900 flex items-center gap-2 mb-6">
+              <History className="h-6 w-6 text-blue-600" />
+              專案活動記錄
+            </h3>
+
+            {isLoadingAudit ? (
+              <div className="flex justify-center py-20">
+                <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+              </div>
+            ) : !auditLogs || auditLogs.length === 0 ? (
+              <p className="text-gray-400 text-center py-20">尚無任何活動記錄。</p>
+            ) : (
+              <div className="relative pl-8 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-100">
+                {auditLogs.map((log) => (
+                  <div key={log.id} className="relative group">
+                    <div className="absolute -left-8 top-1 h-6 w-6 rounded-full bg-white border-2 border-blue-500 flex items-center justify-center z-10 group-hover:scale-110 transition-transform">
+                      <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-black text-gray-900">{log.actor.displayName || log.actor.email}</span>
+                        <span className="text-gray-500">{AUDIT_ACTION_MAP[log.actionType] || log.actionType}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 flex items-center gap-2">
+                        <span>{new Date(log.createdAt).toLocaleString()}</span>
+                        {log.payload?.name && <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600 font-bold">{log.payload.name}</span>}
+                        {log.payload?.title && <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600 font-bold">{log.payload.title}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

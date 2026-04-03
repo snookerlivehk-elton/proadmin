@@ -26,6 +26,7 @@ export default function CreateProjectLogModal({ isOpen, onClose, onSuccess, proj
   const [endDate, setEndDate] = useState('');
   const [attachments, setAttachments] = useState<{ name: string; url: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -61,8 +62,29 @@ export default function CreateProjectLogModal({ isOpen, onClose, onSuccess, proj
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const { data } = await api.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setAttachments([...attachments, { name: data.name, url: data.url }]);
+    } catch (err: any) {
+      setError('檔案上傳失敗');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const addAttachment = () => {
-    const url = prompt('請輸入附件網址 (目前暫為手動輸入 URL)');
+    const url = prompt('請輸入附件網址 (或點擊下方按鈕上傳檔案)');
     if (url) {
       const name = url.split('/').pop() || '附件';
       setAttachments([...attachments, { name, url }]);
@@ -188,16 +210,28 @@ export default function CreateProjectLogModal({ isOpen, onClose, onSuccess, proj
 
             <div>
               <div className="flex items-center justify-between mb-2 ml-1">
-                <label className="block text-[10px] font-black text-gray-400 uppercase">附件連結</label>
-                <button
-                  type="button"
-                  onClick={addAttachment}
-                  className="text-[10px] font-black text-blue-600 hover:underline flex items-center gap-1"
-                >
-                  <Plus className="h-3 w-3" /> 新增連結
-                </button>
+                <label className="block text-[10px] font-black text-gray-400 uppercase">附件檔案與連結</label>
+                <div className="flex gap-4">
+                  <label className="text-[10px] font-black text-blue-600 hover:underline flex items-center gap-1 cursor-pointer">
+                    <Plus className="h-3 w-3" /> 上傳檔案
+                    <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addAttachment}
+                    className="text-[10px] font-black text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> 手動連結
+                  </button>
+                </div>
               </div>
               <div className="space-y-2">
+                {uploading && (
+                  <div className="flex items-center justify-center p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600 mr-2" />
+                    <span className="text-xs font-bold text-gray-500">檔案上傳中...</span>
+                  </div>
+                )}
                 {attachments.map((file, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl">
                     <div className="flex items-center gap-2 overflow-hidden">

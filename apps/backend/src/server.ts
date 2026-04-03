@@ -39,15 +39,7 @@ async function recordAudit(
   }
 }
 
-// 在伺服器啟動前強制同步資料庫結構
-try {
-  console.log('Synchronizing database schema...')
-  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' })
-  console.log('Database synchronization complete.')
-} catch (e: any) {
-  console.error('Database synchronization failed:', e.message)
-}
-
+// 資料庫同步邏輯已移至部署流程中，避免啟動時重複執行
 const app = express()
 
 // 確保 uploads 目錄存在
