@@ -10,6 +10,34 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { issueToken, clearToken, requireAuth, optionalAuth, checkProjectAccess } from './auth'
 import { execSync } from 'child_process'
+import multer from 'multer'
+import path from 'path'
+import fs from 'fs'
+
+// 輔助函數：記錄活動日誌
+async function recordAudit(
+  actorUserId: string,
+  actionType: string,
+  entityType: string,
+  entityId: string,
+  projectId?: string,
+  payload?: any
+) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorUserId,
+        actionType,
+        entityType,
+        entityId,
+        projectId,
+        payload: payload || {}
+      }
+    })
+  } catch (e) {
+    console.error('Failed to record audit log:', e)
+  }
+}
 
 // 在伺服器啟動前強制同步資料庫結構
 try {
@@ -21,6 +49,28 @@ try {
 }
 
 const app = express()
+
+// 確保 uploads 目錄存在
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR)
+}
+
+// 設定靜態檔案服務
+app.use('/uploads', express.static(UPLOADS_DIR))
+
+// Multer 設定
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOADS_DIR)
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
+    cb(null, uniqueSuffix + path.extname(file.originalname))
+  }
+})
+const upload = multer({ storage })
+
 app.use(express.json())
 app.disable('x-powered-by')
 app.use(cookieParser())
@@ -231,6 +281,8 @@ app.post('/projects', requireAuth, async (req: Request, res: Response) => {
       })
       return updated
     })
+
+    await recordAudit(userId, 'PROJECT_CREATE', 'Project', created.id, created.id, { name: created.name })
     res.status(201).json(created)
   } catch (e: any) {
     console.error('create_failed', e)
@@ -273,6 +325,11 @@ app.post('/projects/:id/children', requireAuth, checkProjectAccess('MANAGER'), a
         data: { path: `${parent.path}/${p.id}` }
       })
       return updated
+    })
+
+    await recordAudit(userId, 'SUBPROJECT_CREATE', 'Project', created.id, created.id, { 
+      name: created.name, 
+      parentId: created.parentId 
     })
     res.status(201).json(created)
   } catch (e: any) {
@@ -501,6 +558,10 @@ app.post('/projects/:id/invitations', requireAuth, checkProjectAccess('MANAGER')
       }
     })
     // 實戰中應寄信，測試階段直接回傳 token
+    await recordAudit(userId, 'MEMBER_INVITE', 'ProjectInvitation', invite.id, projectId, { 
+      inviteeEmail: email, 
+      role 
+    })
     res.json({ ...invite, token })
   } catch (e: any) {
     res.status(500).json({ error: 'invite_failed', message: e?.message ?? 'unknown' })
@@ -553,6 +614,8 @@ app.post('/invitations/:id/accept', requireAuth, async (req: Request, res: Respo
         create: { projectId: invite.projectId, userId, role: invite.role }
       })
     })
+
+    await recordAudit(userId, 'INVITE_ACCEPT', 'ProjectInvitation', id, invite.projectId)
     res.json({ ok: true, membership: result })
   } catch (e: any) {
     res.status(500).json({ error: 'accept_failed', message: e?.message ?? 'unknown' })
@@ -576,6 +639,7 @@ app.post('/invitations/:id/reject', requireAuth, async (req: Request, res: Respo
       where: { id },
       data: { status: 'REJECTED' }
     })
+    await recordAudit(userId, 'INVITE_REJECT', 'ProjectInvitation', id, invite.projectId)
     res.json({ ok: true })
   } catch (e: any) {
     res.status(500).json({ error: 'reject_failed' })
@@ -600,6 +664,7 @@ app.post('/invitations/:id/cancel', requireAuth, async (req: Request, res: Respo
       where: { id },
       data: { status: 'CANCELLED' }
     })
+    await recordAudit(userId, 'INVITE_CANCEL', 'ProjectInvitation', id, invite.projectId)
     res.json({ ok: true })
   } catch (e: any) {
     res.status(500).json({ error: 'cancel_failed' })
@@ -669,6 +734,11 @@ app.post('/projects/:id/logs', requireAuth, checkProjectAccess(), async (req: Re
         attachments: parsed.data.attachments as any
       }
     })
+    await recordAudit(userId, 'LOG_CREATE', 'ProjectLog', log.id, projectId, { 
+      type: log.type, 
+      title: log.title,
+      amount: log.amount 
+    })
     res.json(log)
   } catch (e: any) {
     res.status(500).json({ error: 'create_log_failed', message: e.message })
@@ -694,9 +764,104 @@ app.delete('/logs/:id', requireAuth, async (req: Request, res: Response) => {
     }
 
     await prisma.projectLog.delete({ where: { id } })
+    await recordAudit(userId, 'LOG_DELETE', 'ProjectLog', id, log.projectId, { title: log.title })
     res.json({ ok: true })
   } catch (e: any) {
     res.status(500).json({ error: 'delete_log_failed' })
+  }
+})
+
+// 檔案上傳 API
+app.post('/upload', requireAuth, upload.single('file'), (req: Request, res: Response) => {
+  if (!req.file) return res.status(400).json({ error: 'no_file' })
+  
+  // 回傳檔案資訊，供前端保存
+  const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+  res.json({
+    name: req.file.originalname,
+    url: url,
+    filename: req.file.filename
+  })
+})
+
+app.get('/projects/:id/audit-logs', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  try {
+    const logs = await prisma.auditLog.findMany({
+      where: { projectId },
+      include: { actor: { select: { displayName: true, email: true, avatarUrl: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    })
+    res.json(logs)
+  } catch (e: any) {
+    res.status(500).json({ error: 'get_audit_logs_failed' })
+  }
+})
+
+// 遞迴財務匯總：包含當前專案及其所有子專案的財務數據
+app.get('/projects/:id/finance-recursive', requireAuth, checkProjectAccess(), async (req: Request, res: Response) => {
+  const { id: projectId } = req.params
+  try {
+    const root = await prisma.project.findUnique({ where: { id: projectId } })
+    if (!root) return res.status(404).json({ error: 'not_found' })
+
+    // 取得所有子專案的 ID (包含自己)
+    const projects = await prisma.project.findMany({
+      where: { path: { startsWith: root.path } },
+      select: { id: true }
+    })
+    const projectIds = projects.map(p => p.id)
+
+    // 彙總日誌數據
+    const summary = await prisma.projectLog.groupBy({
+      by: ['type'],
+      where: { projectId: { in: projectIds } },
+      _sum: { amount: true }
+    })
+
+    const result = {
+      INCOME: 0,
+      EXPENSE: 0,
+      ENGINEERING: 0,
+      balance: 0
+    }
+
+    summary.forEach(s => {
+      if (s.type === 'INCOME') result.INCOME = Number(s._sum.amount || 0)
+      if (s.type === 'EXPENSE') result.EXPENSE = Number(s._sum.amount || 0)
+      if (s.type === 'ENGINEERING') result.ENGINEERING = Number(s._sum.amount || 0)
+    })
+
+    result.balance = result.INCOME - result.EXPENSE
+
+    res.json(result)
+  } catch (e: any) {
+    res.status(500).json({ error: 'finance_summary_failed' })
+  }
+})
+
+app.delete('/projects/:id/members/:userId', requireAuth, checkProjectAccess('MANAGER'), async (req: Request, res: Response) => {
+  const { id: projectId, userId: targetUserId } = req.params
+  const currentUserId = (req as any).userId as string
+
+  try {
+    const project = await prisma.project.findUnique({ where: { id: projectId } })
+    if (!project) return res.status(404).json({ error: 'not_found' })
+
+    // 不能移除擁有者
+    if (project.ownerUserId === targetUserId) {
+      return res.status(403).json({ error: 'forbidden', message: '不能移除專案擁有者' })
+    }
+
+    await prisma.projectMembership.delete({
+      where: { projectId_userId: { projectId, userId: targetUserId } }
+    })
+
+    await recordAudit(currentUserId, 'MEMBER_REMOVE', 'User', targetUserId, projectId)
+    res.json({ ok: true })
+  } catch (e: any) {
+    res.status(500).json({ error: 'remove_member_failed' })
   }
 })
 
