@@ -19,6 +19,7 @@ export function issueToken(res: Response, user: Pick<User, 'id' | 'email' | 'dis
     { expiresIn: '7d' }
   )
   res.cookie(COOKIE_NAME, token, { ...COOKIE_OPTIONS, maxAge: 7 * 24 * 60 * 60 * 1000 })
+  return token // 回傳 token 讓前端可以存在 localStorage
 }
 
 export function clearToken(res: Response) {
@@ -26,6 +27,19 @@ export function clearToken(res: Response) {
 }
 
 export function getUserIdFromReq(req: Request): string | null {
+  // 1. 優先從 Authorization Header 取得 (修復行動端 Cookie 問題)
+  const authHeader = req.headers.authorization
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1]
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any
+      return decoded?.sub || null
+    } catch {
+      // header token 無效則繼續嘗試 cookie
+    }
+  }
+
+  // 2. 備案：從 Cookie 取得
   const token = (req as any).cookies?.[COOKIE_NAME]
   if (!token) return null
   try {

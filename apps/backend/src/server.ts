@@ -117,8 +117,8 @@ app.post('/auth/google', async (req: Request, res: Response) => {
       update: { googleId, displayName: payload.name || undefined, avatarUrl: payload.picture || undefined },
       create: { email, googleId, displayName: payload.name || undefined, avatarUrl: payload.picture || undefined }
     })
-    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
-    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+    const token = issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName }, token })
   } catch (e: any) {
     console.error('Google Auth Error:', e.message)
     res.status(401).json({ error: 'google_verify_failed', message: e?.message ?? 'unknown' })
@@ -153,8 +153,8 @@ app.post('/auth/register', async (req: Request, res: Response) => {
       }
     })
 
-    issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
-    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName } })
+    const token = issueToken(res, { id: user.id, email: user.email, displayName: user.displayName || null })
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName }, token })
   } catch (e: any) {
     res.status(500).json({ error: 'register_failed', message: e?.message ?? 'unknown' })
   }
@@ -170,8 +170,8 @@ app.post('/auth/login', async (req: Request, res: Response) => {
     if (!user || !(user as any)?.passwordHash) return res.status(401).json({ error: 'invalid_credentials' })
     const ok = bcrypt.compareSync(parsed.data.password, (user as any).passwordHash)
     if (!ok) return res.status(401).json({ error: 'invalid_credentials' })
-    issueToken(res, { id: user!.id, email: user!.email, displayName: user!.displayName || null })
-    res.json({ user: { id: user!.id, email: user!.email, displayName: user!.displayName } })
+    const token = issueToken(res, { id: user!.id, email: user!.email, displayName: user!.displayName || null })
+    res.json({ user: { id: user!.id, email: user!.email, displayName: user!.displayName }, token })
   } catch (e: any) {
     res.status(500).json({ error: 'login_failed', message: e?.message ?? 'unknown' })
   }
